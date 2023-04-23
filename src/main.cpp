@@ -1,8 +1,10 @@
 #include <cassert>
 #include <cstdio>
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
+#include "koopa.h"
 #include "../include/ast.hpp"
 
 using namespace std;
@@ -15,8 +17,10 @@ using namespace std;
 extern FILE *yyin;
 extern int yyparse(unique_ptr<BaseAST> &ast);
 extern void write_file(string file_name, string file_content);
+extern void koopa_ir_from_str(string irstr, std::string &inputstr);
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[])
+{
   // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
   // compiler 模式 输入文件 -o 输出文件
   assert(argc == 5);
@@ -42,6 +46,12 @@ int main(int argc, const char *argv[]) {
     cout << irstr << endl;
     // 写入对应文件
     write_file(output, irstr);
+  }
+  else if(string(mode) == "-riscv"){
+    string riscvstr;
+    koopa_ir_from_str(irstr, riscvstr);
+    cout << riscvstr << endl;
+    write_file(output, riscvstr);
   }
   return 0;
 }
