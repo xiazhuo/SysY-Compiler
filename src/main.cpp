@@ -3,7 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include "ast.hpp"
+#include "../include/ast.hpp"
 
 using namespace std;
 
@@ -14,6 +14,7 @@ using namespace std;
 // 看起来会很烦人, 于是干脆采用这种看起来 dirty 但实际很有效的手段
 extern FILE *yyin;
 extern int yyparse(unique_ptr<BaseAST> &ast);
+extern void write_file(string file_name, string file_content);
 
 int main(int argc, const char *argv[]) {
   // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
@@ -33,7 +34,14 @@ int main(int argc, const char *argv[]) {
   assert(!ret);
 
   // dump AST
-  ast->Dump();
-  cout << endl;
+  string irstr;
+  ast->Dump(irstr);
+
+  if (string(mode) == "-koopa")
+  { // 输出为koopa模式
+    cout << irstr << endl;
+    // 写入对应文件
+    write_file(output, irstr);
+  }
   return 0;
 }
