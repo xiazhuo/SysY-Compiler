@@ -6,15 +6,17 @@
 #include <string>
 #include "koopa.h"
 #include "../include/ast.hpp"
-#include "util.hpp"
+#include "../include/util.hpp"
 
 using namespace std;
 
 extern FILE *yyin;
 extern KoopaString ks;          // 封装了一个生成 KoopaIR的类
+extern RiscvString rvs;         // 封装了一个生成 riscvStr的类
 extern int yyparse(unique_ptr<BaseAST> &ast);
-extern void koopa_ir_from_str(string, string &);
+extern void koopa_ir_from_str(string);
 
+// 向文件中写数据
 void write_file(string file_name, string file_content)
 {
   ofstream os;                  // 创建一个文件输出流对象
@@ -52,8 +54,8 @@ int main(int argc, const char *argv[])
     write_file(output, ir_str);
   }
   else if(string(mode) == "-riscv"){
-    string riscvstr;
-    koopa_ir_from_str(ir_str, riscvstr);
+    koopa_ir_from_str(ir_str);
+    string riscvstr = rvs.getRiscvStr();
     cout << riscvstr << endl;
     write_file(output, riscvstr);
   }

@@ -25,4 +25,4 @@ build/compiler -riscv hello.c -o hello.s
 
 
 
-若要分别查看 lab1 - lab8 的内容，请找到本项目对应的分支。
+若要分别查看 lab1 - lab8 的内容，请在右上角找到本项目的历史提交。

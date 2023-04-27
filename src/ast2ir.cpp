@@ -1,10 +1,10 @@
 #include "../include/ast.hpp"
 #include "../include/symbol.hpp"
-#include "util.hpp"
+#include "../include/util.hpp"
 
 using namespace std;
 
-NameManager nm;
+KoopaNameManager nm;
 KoopaString ks;
 
 void CompUnitAST::Dump() const {
