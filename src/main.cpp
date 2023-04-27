@@ -6,18 +6,23 @@
 #include <string>
 #include "koopa.h"
 #include "../include/ast.hpp"
+#include "util.hpp"
 
 using namespace std;
 
-// 声明 lexer 的输入, 以及 parser 函数
-// 为什么不引用 sysy.tab.hpp 呢? 因为首先里面没有 yyin 的定义
-// 其次, 因为这个文件不是我们自己写的, 而是被 Bison 生成出来的
-// 你的代码编辑器/IDE 很可能找不到这个文件, 然后会给你报错 (虽然编译不会出错)
-// 看起来会很烦人, 于是干脆采用这种看起来 dirty 但实际很有效的手段
 extern FILE *yyin;
+extern KoopaString ks;          // 封装了一个生成 KoopaIR的类
 extern int yyparse(unique_ptr<BaseAST> &ast);
-extern void write_file(string file_name, string file_content);
-extern void koopa_ir_from_str(string irstr, std::string &inputstr);
+extern void koopa_ir_from_str(string, string &);
+
+void write_file(string file_name, string file_content)
+{
+  ofstream os;                  // 创建一个文件输出流对象
+  os.open(file_name, ios::out); // 将对象与文件关联
+  os << file_content;           // 将输入的内容放入txt文件中
+  os.close();
+  return;
+}
 
 int main(int argc, const char *argv[])
 {
@@ -37,19 +42,18 @@ int main(int argc, const char *argv[])
   auto ret = yyparse(ast);
   assert(!ret);
 
-  // dump AST
-  string irstr;
-  ast->Dump(irstr);
+  // 遍历 AST的同时生成 KoopaIR
+  ast->Dump();
+  string ir_str = ks.getKoopaIR();
 
   if (string(mode) == "-koopa")
-  { // 输出为koopa模式
-    cout << irstr << endl;
-    // 写入对应文件
-    write_file(output, irstr);
+  {
+    cout << ir_str << endl;
+    write_file(output, ir_str);
   }
   else if(string(mode) == "-riscv"){
     string riscvstr;
-    koopa_ir_from_str(irstr, riscvstr);
+    koopa_ir_from_str(ir_str, riscvstr);
     cout << riscvstr << endl;
     write_file(output, riscvstr);
   }

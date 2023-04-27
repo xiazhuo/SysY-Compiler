@@ -9,6 +9,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <cstring>
 #include "../include/ast.hpp"
 
 // 声明 lexer 函数和错误处理函数
@@ -20,8 +21,6 @@ using namespace std;
 %}
 
 // 定义 parser 函数和错误处理函数的附加参数
-// 我们需要返回一个字符串作为 AST, 所以我们把附加参数定义成字符串的智能指针
-// 解析完成后, 我们要手动修改这个参数, 把它设置成解析得到的字符串
 %parse-param { std::unique_ptr<BaseAST> &ast }
 
 // yylval 的定义, 我们把它定义成了一个联合体 (union)
@@ -32,26 +31,26 @@ using namespace std;
 %union {
   std::string *str_val;
   int int_val;
+  std::string *str_op;
   BaseAST *ast_val;
+  ExpAST *exp_val;
 }
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN
+%token INT VOID RETURN LESS_EQ GREAT_EQ EQUAL NOT_EQUAL AND OR
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
 %type <ast_val> FuncDef FuncType Block Stmt
+%type <exp_val> Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <int_val> Number
+%type <str_op>  UnaryOp
 
 %%
 
 // 开始符, CompUnit ::= FuncDef, 大括号后声明了解析完成后 parser 要做的事情
-// 之前我们定义了 FuncDef 会返回一个 str_val, 也就是字符串指针
-// 而 parser 一旦解析完 CompUnit, 就说明所有的 token 都被解析了, 即解析结束了
-// 此时我们应该把 FuncDef 返回的结果收集起来, 作为 AST 传给调用 parser 的函数
-// $1 指代规则里第一个符号的返回值, 也就是 FuncDef 的返回值
 CompUnit
   : FuncDef {
     auto comp_unit = make_unique<CompUnitAST>();
@@ -96,10 +95,30 @@ Block
   ;
 
 Stmt
-  : RETURN Number ';' {
+  : RETURN Exp ';' {
     auto ast = new StmtAST();
-    ast->number = to_string($2);
+    ast->exp = unique_ptr<ExpAST>($2);
     $$ = ast;
+  }
+  ;
+
+Exp
+  : LOrExp {
+    $$ = $1;
+  }
+  ;
+
+PrimaryExp
+  : '(' Exp ')'{
+      auto ast = new PrimaryExpAST();
+      ast->exp = unique_ptr<ExpAST>($2); //表示该PrimaryExp为 (Exp)
+      $$ = ast;
+  }
+  | Number{ 
+      auto ast = new PrimaryExpAST();
+      ast->number = $1;
+      ast->exp = NULL;                //表示该PrimaryExp为Number
+      $$ = ast;
   }
   ;
 
@@ -109,10 +128,192 @@ Number
   }
   ;
 
+UnaryExp
+  : PrimaryExp{ 
+      auto ast = new UnaryExpAST();
+      ast->primary_exp = unique_ptr<ExpAST>($1);
+      ast->unary_exp = NULL;          //表示该 UnaryExp为 PrimaryExp
+      $$ = ast;
+  }
+  | UnaryOp UnaryExp{
+      auto ast = new UnaryExpAST();
+      ast->unary_op = *unique_ptr<string>($1);
+      ast->unary_exp = unique_ptr<ExpAST>($2); //表示该UnaryExp为 OP+Exp
+      ast->primary_exp = NULL;  
+      $$ = ast;
+  }
+  ;
+
+UnaryOp
+  : '+'{ $$ = new string("+"); }
+  | '-'{ $$ = new string("-"); }
+  | '!'{ $$ = new string("!"); }
+  ;
+
+MulExp
+  : UnaryExp{
+    auto ast = new MulExpAST();
+    ast->unary_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | MulExp '*' UnaryExp{
+    auto ast = new MulExpAST();
+    ast->unary_exp = NULL;
+    ast->mul_exp_1 = unique_ptr<ExpAST>($1);
+    ast->unary_exp_2 = unique_ptr<ExpAST>($3);
+    ast->mul_op = "*";
+    $$ = ast;
+  }
+  | MulExp '/' UnaryExp{
+    auto ast = new MulExpAST();
+    ast->unary_exp = NULL;
+    ast->mul_exp_1 = unique_ptr<ExpAST>($1);
+    ast->unary_exp_2 = unique_ptr<ExpAST>($3);
+    ast->mul_op = "/";
+    $$ = ast;
+  }
+  | MulExp '%' UnaryExp{
+    auto ast = new MulExpAST();
+    ast->unary_exp = NULL;
+    ast->mul_exp_1 = unique_ptr<ExpAST>($1);
+    ast->unary_exp_2 = unique_ptr<ExpAST>($3);
+    ast->mul_op = "%";
+    $$ = ast;
+  }
+  ;
+
+AddExp 
+  : MulExp {
+    auto ast = new AddExpAST();
+    ast->mul_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | AddExp '+' MulExp {
+    auto ast = new AddExpAST();
+    ast->mul_exp = NULL;
+    ast->add_exp_1 = unique_ptr<ExpAST>($1);
+    ast->mul_exp_2 = unique_ptr<ExpAST>($3);
+    ast->add_op = "+";
+    $$ = ast;
+  }
+  | AddExp '-' MulExp {
+    auto ast = new AddExpAST();
+    ast->mul_exp = NULL;
+    ast->add_exp_1 = unique_ptr<ExpAST>($1);
+    ast->mul_exp_2 = unique_ptr<ExpAST>($3);
+    ast->add_op = "-";
+    $$ = ast;
+  }
+  ;
+
+RelExp
+  : AddExp{
+    auto ast = new RelExpAST();
+    ast->add_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | RelExp '<' AddExp{
+    auto ast = new RelExpAST();
+    ast->add_exp = NULL;
+    ast->rel_exp_1 = unique_ptr<ExpAST>($1);
+    ast->add_exp_2 = unique_ptr<ExpAST>($3);
+    ast->rel_op = "<";
+    $$ = ast;
+  }
+  | RelExp '>' AddExp{
+    auto ast = new RelExpAST();
+    ast->add_exp = NULL;
+    ast->rel_exp_1 = unique_ptr<ExpAST>($1);
+    ast->add_exp_2 = unique_ptr<ExpAST>($3);
+    ast->rel_op = ">";
+    $$ = ast;
+  }
+  | RelExp LESS_EQ AddExp{
+    auto ast = new RelExpAST();
+    ast->add_exp = NULL;
+    ast->rel_exp_1 = unique_ptr<ExpAST>($1);
+    ast->add_exp_2 = unique_ptr<ExpAST>($3);
+    ast->rel_op = "<=";
+    $$ = ast;
+  }
+  | RelExp GREAT_EQ AddExp{
+    auto ast = new RelExpAST();
+    ast->add_exp = NULL;
+    ast->rel_exp_1 = unique_ptr<ExpAST>($1);
+    ast->add_exp_2 = unique_ptr<ExpAST>($3);
+    ast->rel_op = ">=";
+    $$ = ast;
+  }
+  ;
+
+EqExp 
+  : RelExp {
+    auto ast = new EqExpAST();
+    ast->rel_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | EqExp EQUAL RelExp {
+    auto ast = new EqExpAST();
+    ast->rel_exp = NULL;
+    ast->eq_exp_1 = unique_ptr<ExpAST>($1);
+    ast->rel_exp_2 = unique_ptr<ExpAST>($3);
+    ast->eq_op = "==";
+    $$ = ast;
+  }
+  | EqExp NOT_EQUAL RelExp {
+    auto ast = new EqExpAST();
+    ast->rel_exp = NULL;
+    ast->eq_exp_1 = unique_ptr<ExpAST>($1);
+    ast->rel_exp_2 = unique_ptr<ExpAST>($3);
+    ast->eq_op = "!=";
+    $$ = ast;
+  }
+  ;
+
+LAndExp 
+  : EqExp {
+    auto ast = new LAndExpAST();
+    ast->eq_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | LAndExp AND EqExp {
+    auto ast = new LAndExpAST();
+    ast->eq_exp = NULL;
+    ast->l_and_exp_1 = unique_ptr<ExpAST>($1);
+    ast->eq_exp_2 = unique_ptr<ExpAST>($3);
+    $$ = ast;
+  }
+  ;
+
+LOrExp 
+  : LAndExp {
+    auto ast = new LOrExpAST();
+    ast->l_and_exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  | LOrExp OR LAndExp {
+    auto ast = new LOrExpAST();
+    ast->l_and_exp = NULL;
+    ast->l_or_exp_1 = unique_ptr<ExpAST>($1);
+    ast->l_and_exp_2 = unique_ptr<ExpAST>($3);
+    $$ = ast;
+  }
+  ;
+
 %%
 
 // 定义错误处理函数, 其中第二个参数是错误信息
 // parser 如果发生错误 (例如输入的程序出现了语法错误), 就会调用这个函数
 void yyerror(unique_ptr<BaseAST> &ast, const char *s) {
-  cerr << "error: " << s << endl;
+    extern int yylineno;    // defined and maintained in lex
+    extern char *yytext;    // defined and maintained in lex
+    int len=strlen(yytext);
+    int i;
+    char buf[512]={0};
+    for (i=0;i<len;++i)
+    {
+        sprintf(buf,"%s%d ",buf,yytext[i]);
+    }
+    fprintf(stderr, "ERROR: %s at symbol '%s' on line %d\n", s, buf, yylineno);
+
 }

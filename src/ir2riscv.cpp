@@ -2,10 +2,66 @@
 #include <cassert>
 #include <iostream>
 #include <fstream>
-#include "../include/koopair.hpp"
+#include <map>
 #include "koopa.h"
 
 using namespace std;
+typedef unsigned long long ull;
+
+// 重载 Visit，遍历访问每一种 Koopa IR结构
+void Visit(const koopa_raw_program_t &program, std::string &inputstr);
+void Visit(const koopa_raw_slice_t &slice, std::string &inputstr);
+void Visit(const koopa_raw_function_t &func, std::string &inputstr);
+void Visit(const koopa_raw_basic_block_t &bb, std::string &inputstr);
+void Visit(const koopa_raw_value_t &value, std::string &inputstr);
+void Visit(const koopa_raw_return_t &ret, std::string &inputstr);
+void Visit(const koopa_raw_integer_t &integer, std::string &inputstr);
+
+int register_num = 0;
+map<ull, int> M;
+
+// 找到两个操作数的寄存器
+void slice_value(koopa_raw_value_t l, koopa_raw_value_t r, int &lreg, int &rreg)
+{
+
+    if (l->kind.tag == KOOPA_RVT_INTEGER)
+    {
+        if (l->kind.data.integer.value == 0)
+            lreg = -1;
+        else
+        {
+            cout << "   li t" << register_num++ << "," << l->kind.data.integer.value << endl;
+            lreg = register_num - 1;
+        }
+    }
+    else
+        lreg = M[(ull)l];
+    if (r->kind.tag == KOOPA_RVT_INTEGER)
+    {
+        if (r->kind.data.integer.value == 0)
+            rreg = -1;
+        else
+        {
+            cout << "   li t" << register_num++ << "," << l->kind.data.integer.value << endl;
+            rreg = register_num - 1;
+        }
+    }
+    else
+        rreg = M[(ull)r];
+}
+
+void print(int lreg, int rreg)
+{
+    if (lreg == -1)
+        cout << "x0";
+    else
+        cout << "t" << lreg;
+
+    if (rreg == -1)
+        cout << ", x0" << endl;
+    else
+        cout << ", t" << rreg << endl;
+}
 
 void koopa_ir_from_str(string irstr, std::string &inputstr)
 {
@@ -89,6 +145,33 @@ void Visit(const koopa_raw_basic_block_t &bb, std::string &inputstr)
     Visit(bb->insts,inputstr);
 }
 
+// 访问binary指令
+void Visit_binary(const koopa_raw_value_t &value, std::string &inputstr)
+{
+    // lv4中每个二元指令都能将结果存入，因此每次寄存器都是可以从0开始使用
+    register_num = 0; // 刷新寄存器值
+
+    // 根据指令类型判断后续需要如何访问
+    const auto &binary = value->kind.data.binary;
+    int lreg, rreg;
+    // 根据运算符类型判断后续如何翻译
+    switch (binary.op)
+    {
+    case KOOPA_RBO_EQ:
+        break;
+    case KOOPA_RBO_SUB:
+        slice_value(value, value, lreg, rreg);
+        cout << "   sub t" << register_num++ << ", ";
+        print(lreg, rreg);
+        M[(ull)value] = register_num - 1;
+        break;
+    default:
+        // 其他类型暂时遇不到
+        assert(false);
+    }
+    return;
+}
+
 // 访问指令
 void Visit(const koopa_raw_value_t &value, std::string &inputstr)
 {
@@ -103,6 +186,10 @@ void Visit(const koopa_raw_value_t &value, std::string &inputstr)
     case KOOPA_RVT_INTEGER:
         // 访问 integer 指令
         Visit(kind.data.integer, inputstr);
+        break;
+    case KOOPA_RVT_BINARY:
+        // 访问binary指令
+        Visit_binary(value, inputstr);
         break;
     default:
         // 其他类型暂时遇不到
@@ -125,3 +212,4 @@ void Visit(const koopa_raw_integer_t &integer, std::string &inputstr)
     inputstr.append(to_string(intnum));
     return;
 }
+
