@@ -1,11 +1,13 @@
 #include "../include/ast.hpp"
 #include "../include/symbol.hpp"
 #include "../include/util.hpp"
+#include <iostream>
 
 using namespace std;
 
 KoopaNameManager nm;
 KoopaString ks;
+SymbolTable st;
 
 void CompUnitAST::Dump() const {
     func_def->Dump();
@@ -29,19 +31,91 @@ void FuncTypeAST::Dump() const {
 
 void BlockAST::Dump() const {
     ks.append("%entry: \n");
-    stmt->Dump();
+    int len = block_items.size();
+
+    // 注意识别的时候从后往前
+    for (int i = len - 1; i >= 0; i--)
+    {
+        block_items[i]->Dump();
+    }
+    return;
+}
+
+void BlockItemAST::Dump() const
+{
+    if (decl)
+        decl->Dump();
+    else
+        stmt->Dump();
+}
+
+void DeclAST::Dump() const
+{
+    if (var_decl)
+        var_decl->Dump();
+    else
+        const_decl->Dump();
+}
+
+void ConstDeclAST::Dump() const
+{
+    int len = const_defs.size();
+    for (int i = len - 1; i >= 0; i--)
+    {
+        const_defs[i]->Dump();
+    }
+}
+
+void VarDeclAST::Dump() const
+{
+    int len = var_defs.size();
+    for (int i = len - 1; i >= 0; i--)
+    {
+        var_defs[i]->Dump();
+    }
+}
+
+void BTypeAST::Dump() const
+{
+    ks.append("i32");
+}
+
+void ConstDefAST::Dump() const
+{
+    int v = const_init_val->getValue();
+    st.insertINTCONST(ident, v);
+}
+
+void VarDefAST::Dump() const
+{
+    st.insertINT(ident);
+    string name = nm.getName(ident);
+    ks.alloc(name);
+    if (init_val)
+    {
+        string s = init_val->Dump();
+        ks.store(s, name);
+    }
     return;
 }
 
 void StmtAST::Dump() const {
-    string name = exp->Dump();
-    ks.ret(name);
+    if(lval){
+        string val = exp->Dump();
+        string to = lval->Dump(true);
+        ks.store(val, to);
+    }else{
+        string name = exp->Dump();
+        ks.ret(name);
+    }
     return;
 }
 
 string PrimaryExpAST::Dump() const {
     if (exp)
         return exp->Dump();
+    else if(lval)
+        return lval->Dump();
     else
         return to_string(number);
 }
@@ -49,7 +123,10 @@ string PrimaryExpAST::Dump() const {
 int PrimaryExpAST::getValue() const {
     if(exp)
         return exp->getValue();
-    return number;
+    else if(lval)
+        return lval->getValue();
+    else
+        return number;
 }
 
 string UnaryExpAST::Dump() const {
@@ -233,4 +310,43 @@ int LOrExpAST::getValue() const {
         return l_and_exp->getValue();
     int v1 = l_or_exp_1->getValue(), v2 = l_and_exp_2->getValue();
     return v1 || v2;
+}
+
+string InitValAST::Dump() const
+{
+    return exp->Dump();
+}
+
+int InitValAST::getValue() const
+{
+    return exp->getValue();
+}
+
+int ConstInitValAST::getValue() const {
+    return const_exp->getValue();
+}
+
+string LValAST::Dump(bool dump_ptr) const {
+    SysYType *ty = st.getType(ident);
+    if (ty->ty == SysYType::SYSY_INT_CONST)
+        return to_string(getValue());
+    else if (ty->ty == SysYType::SYSY_INT)
+    {
+        if (dump_ptr == false)
+        {
+            string tmp = nm.getTmpName();
+            ks.load(tmp, nm.getName(ident));
+            return tmp;
+        }
+        return nm.getName(ident);
+    }
+    return "";
+}
+
+int LValAST::getValue() const {
+    return st.getValue(ident);
+}
+
+int ConstExpAST::getValue() const {
+    return exp->getValue();
 }

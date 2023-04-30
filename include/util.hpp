@@ -27,6 +27,21 @@ public:
         koopa_str += "  ret " + name + "\n";
     }
 
+    void alloc(const string &name)
+    {
+        koopa_str += "  " + name + " = alloc i32\n";
+    }
+
+    void load(const string &to, const string &from)
+    {
+        koopa_str += "  " + to + " = load " + from + '\n';
+    }
+
+    void store(const string &from, const string &to)
+    {
+        koopa_str += "  store " + from + ", " + to + '\n';
+    }
+
     string getKoopaIR(){
         return koopa_str;
     }

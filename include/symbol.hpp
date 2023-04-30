@@ -13,6 +13,7 @@ class KoopaNameManager
 {
 private:
     int cnt;
+    unordered_map<string, int> no;      // Koopa中的变量名 -> 值
 
 public:
     KoopaNameManager() : cnt(0) {}
@@ -22,6 +23,10 @@ public:
     // 返回临时变量名，如 %0,%1
     string getTmpName() {
         return "%" + to_string(cnt++);
+    }
+    // 返回Sysy具名变量在Koopa中的变量名，如 @x,@y,(暂不考虑重名)
+    string getName(const string &s){
+        return "@" + s;
     }
 };
 
@@ -57,5 +62,79 @@ public:
             return "a" + to_string(regmap[value] - 7);
         else
             return "t" + to_string(regmap[value]);
+    }
+};
+
+// 符号类型
+class SysYType
+{
+public:
+    enum TYPE
+    {
+        SYSY_INT,           // 变量
+        SYSY_INT_CONST,     // 常量
+    };
+
+    TYPE ty;
+    int value;
+
+    SysYType() : ty(SYSY_INT), value(0){}
+    SysYType(TYPE _t) : ty(_t), value(0){}
+    SysYType(TYPE _t, int _v) : ty(_t), value(_v){}
+
+    ~SysYType() = default;
+};
+
+// 符号
+class Symbol
+{
+public:
+    string name;  // KoopaIR中的具名变量，诸如@x, @y
+    SysYType *ty;
+    Symbol(const string &_name, SysYType *_t) : name(_name), ty(_t){}
+    ~Symbol()
+    {
+        if (ty)
+            delete ty;
+    }
+};
+
+// 符号表
+class SymbolTable
+{
+public:
+    const int UNKNOWN = -1;
+    unordered_map<string, Symbol *> symbol_tb; // name -> Symbol *
+    SymbolTable() = default;
+    ~SymbolTable(){
+        for (auto &p : symbol_tb)
+        {
+            delete p.second;
+        }
+    };
+
+    void insertINTCONST(const string &ident, int value){
+        SysYType *ty = new SysYType(SysYType::SYSY_INT_CONST, value);
+        Symbol *sym = new Symbol(ident, ty);
+        symbol_tb.insert({ident,sym});
+    }
+
+    void insertINT(const string &ident){
+        SysYType *ty = new SysYType(SysYType::SYSY_INT);
+        Symbol *sym = new Symbol(ident, ty);
+        symbol_tb.insert({ident, sym});
+    }
+
+    bool isExists(const string &ident){
+        return symbol_tb.find(ident) != symbol_tb.end();
+    }
+
+    int getValue(const string &ident){
+        return symbol_tb[ident]->ty->value;
+    }
+
+    SysYType* getType(const string &ident)
+    {
+        return symbol_tb[ident]->ty;
     }
 };
