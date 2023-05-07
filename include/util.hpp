@@ -2,6 +2,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <stack>
 
 using namespace std;
 
@@ -42,17 +43,17 @@ public:
         koopa_str += "  store " + from + ", " + to + '\n';
     }
 
-    void label(const std::string &s)
+    void label(const string &s)
     {
         koopa_str += s + ":\n";
     }
 
-    void br(const std::string &v, const std::string &then_s, const std::string &else_s)
+    void br(const string &v, const string &then_s, const string &else_s)
     {
         koopa_str += "  br " + v + ", " + then_s + ", " + else_s + '\n';
     }
 
-    void jump(const std::string &label)
+    void jump(const string &label)
     {
         koopa_str += "  jump " + label + '\n';
     }
@@ -119,5 +120,47 @@ public:
     void set()
     {
         f = true;
+    }
+};
+
+class WhileName
+{
+public:
+    string entry_name, body_name, end_name;
+    WhileName(const string &_entry, const string &_body, const string &_end) : entry_name(_entry), body_name(_body), end_name(_end) {}
+};
+
+// while栈，记录 while的名字，入口，结束位置
+class WhileStack
+{
+private:
+    stack<WhileName> whiles;
+
+public:
+    void append(const string &_entry, const string &_body, const string &_end)
+    {
+        whiles.emplace(_entry, _body, _end);
+    }
+
+    void quit()
+    {
+        whiles.pop();
+    }
+
+    string getBodyName()
+    {
+        return whiles.top().body_name;
+    }
+
+    // 从 continue 跳转时，用 getEntryName 函数获得 while 的入口地址
+    string getEntryName()
+    {
+        return whiles.top().entry_name;
+    }
+
+    // 从 break 跳出时，用 getEndName 函数获得 while 结束地址
+    string getEndName()
+    {
+        return whiles.top().end_name;
     }
 };

@@ -8,6 +8,7 @@ using namespace std;
 SymbolTableStack st;
 KoopaString ks;
 BlockController bc;
+WhileStack wst;
 
 void CompUnitAST::Dump() const {
     st.alloc();     // 全局作用域栈
@@ -178,6 +179,43 @@ void StmtAST::Dump() const {
         // end
         bc.set();
         ks.label(j);
+    }
+    else if (tag == WHILE)
+    {
+        string while_entry = st.getLabelName("while_entry");
+        string while_body = st.getLabelName("while_body");
+        string while_end = st.getLabelName("while_end");
+
+        wst.append(while_entry, while_body, while_end);
+
+        ks.jump(while_entry);
+
+        bc.set();
+        ks.label(while_entry);
+        string cond = exp->Dump();
+        ks.br(cond, while_body, while_end);
+
+        bc.set();
+        ks.label(while_body);
+        stmt->Dump();
+        if (bc.alive()){
+            ks.jump(while_entry);
+            bc.finish();
+        }
+
+        bc.set();
+        ks.label(while_end);
+        wst.quit(); // 该while处理已结束，退栈
+    }
+    else if (tag == BREAK)
+    {
+        ks.jump(wst.getEndName()); // 跳转到while_end
+        bc.finish();
+    }
+    else if (tag == CONTINUE)
+    {
+        ks.jump(wst.getEntryName()); // 跳转到while_entry
+        bc.finish();
     }
     return;
 }

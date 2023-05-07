@@ -136,7 +136,10 @@ class StmtAST : public BaseAST
       ASSIGN,
       BLOCK,
       EXP,
-      IF
+      IF,
+      WHILE,
+      BREAK,
+      CONTINUE
     };
     TAG tag;
     unique_ptr<ExpAST> exp;
