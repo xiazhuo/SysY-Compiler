@@ -130,8 +130,18 @@ class VarDefAST : public BaseAST
 class StmtAST : public BaseAST
 {
   public:
+    enum TAG
+    {
+      RETURN,
+      ASSIGN,
+      BLOCK,
+      EXP
+    };
+    TAG tag;
     unique_ptr<ExpAST> exp;
     unique_ptr<LValAST> lval;
+    unique_ptr<BaseAST> block;
+    unique_ptr<BaseAST> stmt;
 
     void Dump() const override;
 };

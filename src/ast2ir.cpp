@@ -5,20 +5,22 @@
 
 using namespace std;
 
-KoopaNameManager nm;
+SymbolTableStack st;
 KoopaString ks;
-SymbolTable st;
 
 void CompUnitAST::Dump() const {
+    st.alloc();     // 全局作用域栈
     func_def->Dump();
+    st.quit();
     return;
 }
 
 void FuncDefAST::Dump() const {
-    nm.reset();
+    st.resetNameManager();
     ks.append("fun @" + ident + " (): ");
     func_type->Dump();
     ks.append(" {\n");
+    ks.append("%entry: \n");
     block->Dump();
     ks.append("}");
     return;
@@ -30,7 +32,7 @@ void FuncTypeAST::Dump() const {
 }
 
 void BlockAST::Dump() const {
-    ks.append("%entry: \n");
+    st.alloc();
     int len = block_items.size();
 
     // 注意识别的时候从后往前
@@ -38,6 +40,7 @@ void BlockAST::Dump() const {
     {
         block_items[i]->Dump();
     }
+    st.quit();
     return;
 }
 
@@ -89,7 +92,7 @@ void ConstDefAST::Dump() const
 void VarDefAST::Dump() const
 {
     st.insertINT(ident);
-    string name = nm.getName(ident);
+    string name = st.getName(ident);
     ks.alloc(name);
     if (init_val)
     {
@@ -100,13 +103,34 @@ void VarDefAST::Dump() const
 }
 
 void StmtAST::Dump() const {
-    if(lval){
+    if (tag == RETURN)
+    {
+        if (exp)
+        {
+            string name = exp->Dump();
+            ks.ret(name);
+        }
+        else
+        {
+            ks.ret("");
+        }
+    }
+    else if (tag == ASSIGN)
+    {
         string val = exp->Dump();
         string to = lval->Dump(true);
         ks.store(val, to);
-    }else{
-        string name = exp->Dump();
-        ks.ret(name);
+    }
+    else if (tag == BLOCK)
+    {
+        block->Dump();
+    }
+    else if (tag == EXP)
+    {
+        if (exp)
+        {
+            exp->Dump();
+        }
     }
     return;
 }
@@ -140,12 +164,12 @@ string UnaryExpAST::Dump() const {
     }
     else if(unary_op == "-")
     {
-        ans = nm.getTmpName();
+        ans = st.getTmpName();
         ks.binary("sub", ans, "0", exp);
     }
     else if (unary_op == "!")
     {
-        ans = nm.getTmpName();
+        ans = st.getTmpName();
         ks.binary("eq", ans, exp, "0");
     }
     return ans;
@@ -169,7 +193,7 @@ string MulExpAST::Dump() const
 
     string op = mul_op == "*" ? "mul" : (mul_op == "/" ? "div" : "mod");
 
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary(op, ans, exp1, exp2);
     return ans;
 }
@@ -191,7 +215,7 @@ string AddExpAST::Dump() const {
 
     string op = add_op == "+" ? "add" : "sub";
 
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary(op, ans, exp1, exp2);
     return ans;
 }
@@ -217,7 +241,7 @@ string RelExpAST::Dump() const {
         op = "gt";
     else if (rel_op == ">=")
         op = "ge";
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary(op, ans, exp1, exp2);
     return ans;
 }
@@ -248,7 +272,7 @@ string EqExpAST::Dump() const
 
     string op = eq_op == "==" ? "eq" : "ne";
 
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary(op, ans, exp1, exp2);
     return ans;
 }
@@ -271,11 +295,11 @@ string LAndExpAST::Dump() const
     exp1 = l_and_exp_1->Dump();
     exp2 = eq_exp_2->Dump();
 
-    string ans1 = nm.getTmpName();
+    string ans1 = st.getTmpName();
     ks.binary("ne", ans1, exp1, "0");
-    string ans2 = nm.getTmpName();
+    string ans2 = st.getTmpName();
     ks.binary("ne", ans2, exp2, "0");
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary("and", ans, ans1, ans2);
     return ans;
 }
@@ -296,11 +320,11 @@ string LOrExpAST::Dump() const {
     exp1 = l_or_exp_1->Dump();
     exp2 = l_and_exp_2->Dump();
 
-    string ans1 = nm.getTmpName();
+    string ans1 = st.getTmpName();
     ks.binary("ne", ans1, exp1, "0");
-    string ans2 = nm.getTmpName();
+    string ans2 = st.getTmpName();
     ks.binary("ne", ans2, exp2, "0");
-    ans = nm.getTmpName();
+    ans = st.getTmpName();
     ks.binary("or", ans, ans1, ans2);
     return ans;
 }
@@ -334,11 +358,11 @@ string LValAST::Dump(bool dump_ptr) const {
     {
         if (dump_ptr == false)
         {
-            string tmp = nm.getTmpName();
-            ks.load(tmp, nm.getName(ident));
+            string tmp = st.getTmpName();
+            ks.load(tmp, st.getName(ident));
             return tmp;
         }
-        return nm.getName(ident);
+        return st.getName(ident);
     }
     return "";
 }

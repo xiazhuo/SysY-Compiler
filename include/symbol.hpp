@@ -1,5 +1,6 @@
 #pragma once
 #include <unordered_map>
+#include <iostream>
 #include <string>
 #include <vector>
 #include <queue>
@@ -13,7 +14,7 @@ class KoopaNameManager
 {
 private:
     int cnt;
-    unordered_map<string, int> no;      // Koopa中的变量名 -> 值
+    unordered_map<string, int> no;      // Sys中的变量名 -> Koopa变量名（后缀）
 
 public:
     KoopaNameManager() : cnt(0) {}
@@ -24,9 +25,15 @@ public:
     string getTmpName() {
         return "%" + to_string(cnt++);
     }
-    // 返回Sysy具名变量在Koopa中的变量名，如 @x,@y,(暂不考虑重名)
-    string getName(const string &s){
-        return "@" + s;
+    // 返回Sysy具名变量在Koopa中的变量名，如 @x,@y,重名时后缀加一，@x_1,@y_1
+    string getVarName(const string &s){
+        // 若是第一次生成就是@s_1
+        if (no.count(s) == 0)
+        {
+            no[s] = 1;
+            return "@" + s + "_1";
+        }
+        return "@" + s + "_" + to_string(++no[s]);
     }
 };
 
@@ -89,7 +96,7 @@ public:
 class Symbol
 {
 public:
-    string name;  // KoopaIR中的具名变量，诸如@x, @y
+    string name;  // KoopaIR中的具名变量，诸如@x_1, @y_1
     SysYType *ty;
     Symbol(const string &_name, SysYType *_t) : name(_name), ty(_t){}
     ~Symbol()
@@ -103,8 +110,7 @@ public:
 class SymbolTable
 {
 public:
-    const int UNKNOWN = -1;
-    unordered_map<string, Symbol *> symbol_tb; // name -> Symbol *
+    unordered_map<string, Symbol *> symbol_tb; // ident -> Symbol *
     SymbolTable() = default;
     ~SymbolTable(){
         for (auto &p : symbol_tb)
@@ -113,15 +119,17 @@ public:
         }
     };
 
-    void insertINTCONST(const string &ident, int value){
+    void insertINTCONST(const string &ident, const string &name, int value)
+    {
         SysYType *ty = new SysYType(SysYType::SYSY_INT_CONST, value);
-        Symbol *sym = new Symbol(ident, ty);
+        Symbol *sym = new Symbol(name, ty);
         symbol_tb.insert({ident,sym});
     }
 
-    void insertINT(const string &ident){
+    void insertINT(const string &ident, const string &name)
+    {
         SysYType *ty = new SysYType(SysYType::SYSY_INT);
-        Symbol *sym = new Symbol(ident, ty);
+        Symbol *sym = new Symbol(name, ty);
         symbol_tb.insert({ident, sym});
     }
 
@@ -136,5 +144,101 @@ public:
     SysYType* getType(const string &ident)
     {
         return symbol_tb[ident]->ty;
+    }
+
+    string getName(const string &ident){
+        return symbol_tb[ident]->name;
+    }
+};
+
+// 符号表栈（不同作用域中定义的符号在不同的栈中）
+class SymbolTableStack
+{
+private:
+    deque<unique_ptr<SymbolTable>> sym_tb_st;
+    KoopaNameManager nm;
+
+public:
+    void alloc()
+    {
+        sym_tb_st.emplace_back(new SymbolTable());
+    }
+
+    void quit()
+    {
+        sym_tb_st.pop_back();
+    }
+
+    // 每次向栈底的符号表中插入
+    void insertINT(const string &ident)
+    {
+        string name = nm.getVarName(ident);
+        sym_tb_st.back()->insertINT(ident, name);
+    }
+
+    void insertINTCONST(const string &ident, int value)
+    {
+        string name = nm.getVarName(ident);
+        sym_tb_st.back()->insertINTCONST(ident, name, value);
+    }
+
+    // 从栈底开始往上依次查找
+    bool isExists(const string &ident)
+    {
+        for (int i = (int)sym_tb_st.size() - 1; i >= 0; --i)
+        {
+            if (sym_tb_st[i]->isExists(ident))
+                return true;
+        }
+        return false;
+    }
+
+    int getValue(const string &ident)
+    {
+        int i = (int)sym_tb_st.size() - 1;
+        for (; i >= 0; --i)
+        {
+            if (sym_tb_st[i]->isExists(ident))
+                break;
+        }
+        return sym_tb_st[i]->getValue(ident);
+    }
+
+    SysYType *getType(const string &ident)
+    {
+        int i = (int)sym_tb_st.size() - 1;
+        for (; i >= 0; --i)
+        {
+            if (sym_tb_st[i]->isExists(ident))
+                break;
+        }
+        return sym_tb_st[i]->getType(ident);
+    }
+
+    string getName(const string &ident)
+    {
+        int i = (int)sym_tb_st.size() - 1;
+        for (; i >= 0; --i)
+        {
+            if (sym_tb_st[i]->isExists(ident))
+                break;
+        }
+        return sym_tb_st[i]->getName(ident);
+    }
+
+    // 封装KoopaNameManager
+    void resetNameManager()
+    {
+        nm.reset();
+    }
+
+    string getTmpName()
+    {
+        return nm.getTmpName();
+    }
+
+    string getVarName(const string &ident)
+    {
+        return nm.getVarName(ident);
     }
 };
