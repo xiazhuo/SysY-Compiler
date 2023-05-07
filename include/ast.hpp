@@ -135,13 +135,16 @@ class StmtAST : public BaseAST
       RETURN,
       ASSIGN,
       BLOCK,
-      EXP
+      EXP,
+      IF
     };
     TAG tag;
     unique_ptr<ExpAST> exp;
     unique_ptr<LValAST> lval;
     unique_ptr<BaseAST> block;
     unique_ptr<BaseAST> stmt;
+    unique_ptr<BaseAST> if_stmt;
+    unique_ptr<BaseAST> else_stmt;
 
     void Dump() const override;
 };

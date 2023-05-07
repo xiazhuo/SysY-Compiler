@@ -42,6 +42,21 @@ public:
         koopa_str += "  store " + from + ", " + to + '\n';
     }
 
+    void label(const std::string &s)
+    {
+        koopa_str += s + ":\n";
+    }
+
+    void br(const std::string &v, const std::string &then_s, const std::string &else_s)
+    {
+        koopa_str += "  br " + v + ", " + then_s + ", " + else_s + '\n';
+    }
+
+    void jump(const std::string &label)
+    {
+        koopa_str += "  jump " + label + '\n';
+    }
+
     string getKoopaIR(){
         return koopa_str;
     }
@@ -81,5 +96,28 @@ public:
     string getRiscvStr()
     {
         return riscv_str;
+    }
+};
+
+// 每个基本块的结尾必须有且仅有 br, jump 或 ret中的一个
+class BlockController
+{
+private:
+    bool f = true;
+
+public:
+    bool alive()
+    {
+        return f;
+    }
+
+    void finish()
+    {
+        f = false;
+    }
+
+    void set()
+    {
+        f = true;
     }
 };

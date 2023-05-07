@@ -28,12 +28,21 @@ public:
     // 返回Sysy具名变量在Koopa中的变量名，如 @x,@y,重名时后缀加一，@x_1,@y_1
     string getVarName(const string &s){
         // 若是第一次生成就是@s_1
-        if (no.count(s) == 0)
+        if (!no.count(s))
         {
             no[s] = 1;
             return "@" + s + "_1";
         }
         return "@" + s + "_" + to_string(++no[s]);
+    }
+
+    string getLabelName(const string &s){
+        if (!no.count(s))
+        {
+            no[s] = 1;
+            return "%" + s + "_1";
+        }
+        return "%" + s + "_" + to_string(++no[s]);
     }
 };
 
@@ -240,5 +249,10 @@ public:
     string getVarName(const string &ident)
     {
         return nm.getVarName(ident);
+    }
+
+    string getLabelName(const string &label_ident)
+    {
+        return nm.getLabelName(label_ident);
     }
 };

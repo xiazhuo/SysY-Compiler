@@ -7,6 +7,7 @@ using namespace std;
 
 SymbolTableStack st;
 KoopaString ks;
+BlockController bc;
 
 void CompUnitAST::Dump() const {
     st.alloc();     // 全局作用域栈
@@ -20,8 +21,15 @@ void FuncDefAST::Dump() const {
     ks.append("fun @" + ident + " (): ");
     func_type->Dump();
     ks.append(" {\n");
-    ks.append("%entry: \n");
+    bc.set();           // 函数是一个基本块
+    ks.label("%entry");
     block->Dump();
+    // 特判空块
+    if (bc.alive())
+    {
+        ks.ret("0");
+        bc.finish();
+    }
     ks.append("}");
     return;
 }
@@ -46,6 +54,9 @@ void BlockAST::Dump() const {
 
 void BlockItemAST::Dump() const
 {
+    // 若已存在跳转指令则不执行后面的语句
+    if(!bc.alive())
+        return;
     if (decl)
         decl->Dump();
     else
@@ -103,6 +114,9 @@ void VarDefAST::Dump() const
 }
 
 void StmtAST::Dump() const {
+    // 若已存在跳转指令则不执行后面的语句
+    if (!bc.alive())
+        return;
     if (tag == RETURN)
     {
         if (exp)
@@ -114,6 +128,7 @@ void StmtAST::Dump() const {
         {
             ks.ret("");
         }
+        bc.finish();        // return语句之后的语句不再执行
     }
     else if (tag == ASSIGN)
     {
@@ -131,6 +146,38 @@ void StmtAST::Dump() const {
         {
             exp->Dump();
         }
+    }
+    else if (tag == IF)
+    {
+        string s = exp->Dump();
+        string t = st.getLabelName("then");
+        string e = st.getLabelName("else");
+        string j = st.getLabelName("end");
+        ks.br(s, t, else_stmt == nullptr ? j : e);
+
+        // IF Stmt
+        bc.set();       // 进入新的基本块
+        ks.label(t);
+        if_stmt->Dump();
+        if (bc.alive()){
+            ks.jump(j);
+            bc.finish();
+        }
+
+        // else stmt
+        if (else_stmt != nullptr)
+        {
+            bc.set();
+            ks.label(e);
+            else_stmt->Dump();
+            if (bc.alive()){
+                ks.jump(j);
+                bc.finish();
+            }
+        }
+        // end
+        bc.set();
+        ks.label(j);
     }
     return;
 }
@@ -284,24 +331,36 @@ int EqExpAST::getValue() const {
     return eq_op == "==" ? (v1 == v2) : (v1 != v2);
 }
 
-// 暂时不需要进行短路求值
-// a&&b等价于(a!=0)&(b!=0)
 string LAndExpAST::Dump() const
 {
     if (eq_exp)
         return eq_exp->Dump();
-    string exp1, exp2, ans;
+    // 修改支持短路逻辑
+    string result = st.getVarName("SCRES");
+    ks.alloc(result);
+    ks.store("0", result);
 
-    exp1 = l_and_exp_1->Dump();
-    exp2 = eq_exp_2->Dump();
+    string lhs = l_and_exp_1->Dump();
+    string then_s = st.getLabelName("then_sc");
+    string end_s = st.getLabelName("end_sc");
 
-    string ans1 = st.getTmpName();
-    ks.binary("ne", ans1, exp1, "0");
-    string ans2 = st.getTmpName();
-    ks.binary("ne", ans2, exp2, "0");
-    ans = st.getTmpName();
-    ks.binary("and", ans, ans1, ans2);
-    return ans;
+    // 若左条件是true，则继续判断右条件，否则结束
+    ks.br(lhs, then_s, end_s);
+
+    bc.set();
+    ks.label(then_s);
+    string rhs = eq_exp_2->Dump();
+    string tmp = st.getTmpName();
+    ks.binary("ne", tmp, rhs, "0");
+    ks.store(tmp, result);
+    ks.jump(end_s);
+    bc.finish();
+
+    bc.set();
+    ks.label(end_s);
+    string ret = st.getTmpName();
+    ks.load(ret, result);
+    return ret;
 }
 
 int LAndExpAST::getValue() const {
@@ -311,22 +370,36 @@ int LAndExpAST::getValue() const {
     return v1 && v2;
 }
 
-// a||b等价于(a!=0)|(b!=0)
 string LOrExpAST::Dump() const {
     if (l_and_exp)
         return l_and_exp->Dump();
-    string exp1, exp2, ans;
+    // 修改支持短路逻辑
+    string result = st.getVarName("SCRES");
+    ks.alloc(result);
+    ks.store("1", result);
 
-    exp1 = l_or_exp_1->Dump();
-    exp2 = l_and_exp_2->Dump();
+    string lhs = l_or_exp_1->Dump();
 
-    string ans1 = st.getTmpName();
-    ks.binary("ne", ans1, exp1, "0");
-    string ans2 = st.getTmpName();
-    ks.binary("ne", ans2, exp2, "0");
-    ans = st.getTmpName();
-    ks.binary("or", ans, ans1, ans2);
-    return ans;
+    string then_s = st.getLabelName("then_sc");
+    string end_s = st.getLabelName("end_sc");
+
+    // 若左条件是false，则继续判断右条件，否则结束
+    ks.br(lhs, end_s, then_s);
+
+    bc.set();
+    ks.label(then_s);
+    string rhs = l_and_exp_2->Dump();
+    string tmp = st.getTmpName();
+    ks.binary("ne", tmp, rhs, "0");
+    ks.store(tmp, result);
+    ks.jump(end_s);
+    bc.finish();
+
+    bc.set();
+    ks.label(end_s);
+    string ret = st.getTmpName();
+    ks.load(ret, result);
+    return ret;
 }
 
 int LOrExpAST::getValue() const {

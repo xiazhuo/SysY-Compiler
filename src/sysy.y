@@ -42,12 +42,12 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT VOID RETURN LESS_EQ GREAT_EQ EQUAL NOT_EQUAL AND OR CONST
+%token INT VOID RETURN LESS_EQ GREAT_EQ EQUAL NOT_EQUAL AND OR CONST IF ELSE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl BType ConstDef VarDecl VarDef BlockItem
+%type <ast_val> FuncDef FuncType Block Stmt Decl ConstDecl BType ConstDef VarDecl VarDef BlockItem MatchedStmt OpenStmt OtherStmt
 %type <lval> LVal
 %type <var_list> VarDefList
 %type <con_list> ConstDefList
@@ -116,12 +116,12 @@ BlockItem
   : Decl {
     auto ast = new BlockItemAST();
     ast->decl = unique_ptr<BaseAST>($1);
-    ast->stmt = NULL;
+    ast->stmt = nullptr;
     $$ = ast;
   }
   | Stmt {
     auto ast = new BlockItemAST();
-    ast->decl = NULL;
+    ast->decl = nullptr;
     ast->stmt = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
@@ -131,12 +131,12 @@ Decl
   : ConstDecl {
     auto ast = new DeclAST();
     ast->const_decl = unique_ptr<BaseAST>($1);
-    ast->var_decl = NULL;
+    ast->var_decl = nullptr;
     $$ = ast;
   }
   | VarDecl {
     auto ast = new DeclAST();
-    ast->const_decl = NULL;
+    ast->const_decl = nullptr;
     ast->var_decl = unique_ptr<BaseAST>($1);
     $$ = ast;
   }
@@ -204,7 +204,7 @@ VarDef
   : IDENT {
     auto ast = new VarDefAST();
     ast->ident = *unique_ptr<string>($1);
-    ast->init_val = NULL;
+    ast->init_val = nullptr;
     $$ = ast;
   }
   | IDENT '=' InitVal {
@@ -216,6 +216,50 @@ VarDef
   ;
 
 Stmt
+  : MatchedStmt {
+    $$ = $1;
+  } 
+  | OpenStmt {
+    $$ = $1;
+  }
+  ;
+
+// 若有IF则一定有匹配的ELSE
+MatchedStmt
+  : IF '(' Exp ')' MatchedStmt ELSE MatchedStmt {
+    auto ast = new StmtAST();
+    ast->tag = StmtAST::IF;
+    ast->exp = unique_ptr<ExpAST>($3);
+    ast->if_stmt = unique_ptr<BaseAST>($5);
+    ast->else_stmt = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  } 
+  | OtherStmt {
+    $$ = $1;
+  }
+  ;
+
+// IF后可以不接ELSE（一定在最后）
+OpenStmt
+  : IF '(' Exp ')' Stmt {
+    auto ast = new StmtAST();
+    ast->tag = StmtAST::IF;
+    ast->exp = unique_ptr<ExpAST>($3);
+    ast->if_stmt = unique_ptr<BaseAST>($5);
+    ast->else_stmt = nullptr;
+    $$ = ast;
+  }
+  | IF '(' Exp ')' MatchedStmt ELSE OpenStmt {
+    auto ast = new StmtAST();
+    ast->tag = StmtAST::IF;
+    ast->exp = unique_ptr<ExpAST>($3);
+    ast->if_stmt = unique_ptr<BaseAST>($5);
+    ast->else_stmt = unique_ptr<BaseAST>($7);
+    $$ = ast;
+  }
+  ;
+
+OtherStmt
   : LVal '=' Exp ';' {
     auto ast = new StmtAST();
     ast->tag = StmtAST::ASSIGN;
@@ -232,7 +276,7 @@ Stmt
   | ';' {
     auto ast = new StmtAST();
     ast->tag = StmtAST::EXP;
-    ast->exp = NULL;
+    ast->exp = nullptr;
     $$ = ast;
   }
   | Block {
@@ -244,15 +288,15 @@ Stmt
   | RETURN Exp ';' {
     auto ast = new StmtAST();
     ast->tag = StmtAST::RETURN;
-    ast->lval = NULL;
+    ast->lval = nullptr;
     ast->exp = unique_ptr<ExpAST>($2);
     $$ = ast;
   }
   | RETURN ';' {
     auto ast = new StmtAST();
     ast->tag = StmtAST::RETURN;
-    ast->lval = NULL;
-    ast->exp = NULL;
+    ast->lval = nullptr;
+    ast->exp = nullptr;
     $$ = ast;
   }
   ;
@@ -267,20 +311,20 @@ PrimaryExp
   : '(' Exp ')'{
     auto ast = new PrimaryExpAST();
     ast->exp = unique_ptr<ExpAST>($2); //表示该PrimaryExp为 (Exp)
-    ast->lval = NULL;
+    ast->lval = nullptr;
     $$ = ast;
   }
   | LVal {
     auto ast = new PrimaryExpAST();
-    ast->exp = NULL;
+    ast->exp = nullptr;
     ast->lval = unique_ptr<LValAST>($1); //表示该PrimaryExp为 LVal
     $$ = ast;
   }
   | Number { 
     auto ast = new PrimaryExpAST();
     ast->number = $1;
-    ast->exp = NULL;                //表示该PrimaryExp为Number
-    ast->lval = NULL;
+    ast->exp = nullptr;                //表示该PrimaryExp为Number
+    ast->lval = nullptr;
     $$ = ast;
   }
   ;
@@ -295,14 +339,14 @@ UnaryExp
   : PrimaryExp{ 
       auto ast = new UnaryExpAST();
       ast->primary_exp = unique_ptr<ExpAST>($1);
-      ast->unary_exp = NULL;          //表示该 UnaryExp为 PrimaryExp
+      ast->unary_exp = nullptr;          //表示该 UnaryExp为 PrimaryExp
       $$ = ast;
   }
   | UnaryOp UnaryExp{
       auto ast = new UnaryExpAST();
       ast->unary_op = *unique_ptr<string>($1);
       ast->unary_exp = unique_ptr<ExpAST>($2); //表示该UnaryExp为 OP+Exp
-      ast->primary_exp = NULL;  
+      ast->primary_exp = nullptr;  
       $$ = ast;
   }
   ;
@@ -321,7 +365,7 @@ MulExp
   }
   | MulExp '*' UnaryExp{
     auto ast = new MulExpAST();
-    ast->unary_exp = NULL;
+    ast->unary_exp = nullptr;
     ast->mul_exp_1 = unique_ptr<ExpAST>($1);
     ast->unary_exp_2 = unique_ptr<ExpAST>($3);
     ast->mul_op = "*";
@@ -329,7 +373,7 @@ MulExp
   }
   | MulExp '/' UnaryExp{
     auto ast = new MulExpAST();
-    ast->unary_exp = NULL;
+    ast->unary_exp = nullptr;
     ast->mul_exp_1 = unique_ptr<ExpAST>($1);
     ast->unary_exp_2 = unique_ptr<ExpAST>($3);
     ast->mul_op = "/";
@@ -337,7 +381,7 @@ MulExp
   }
   | MulExp '%' UnaryExp{
     auto ast = new MulExpAST();
-    ast->unary_exp = NULL;
+    ast->unary_exp = nullptr;
     ast->mul_exp_1 = unique_ptr<ExpAST>($1);
     ast->unary_exp_2 = unique_ptr<ExpAST>($3);
     ast->mul_op = "%";
@@ -353,7 +397,7 @@ AddExp
   }
   | AddExp '+' MulExp {
     auto ast = new AddExpAST();
-    ast->mul_exp = NULL;
+    ast->mul_exp = nullptr;
     ast->add_exp_1 = unique_ptr<ExpAST>($1);
     ast->mul_exp_2 = unique_ptr<ExpAST>($3);
     ast->add_op = "+";
@@ -361,7 +405,7 @@ AddExp
   }
   | AddExp '-' MulExp {
     auto ast = new AddExpAST();
-    ast->mul_exp = NULL;
+    ast->mul_exp = nullptr;
     ast->add_exp_1 = unique_ptr<ExpAST>($1);
     ast->mul_exp_2 = unique_ptr<ExpAST>($3);
     ast->add_op = "-";
@@ -377,7 +421,7 @@ RelExp
   }
   | RelExp '<' AddExp{
     auto ast = new RelExpAST();
-    ast->add_exp = NULL;
+    ast->add_exp = nullptr;
     ast->rel_exp_1 = unique_ptr<ExpAST>($1);
     ast->add_exp_2 = unique_ptr<ExpAST>($3);
     ast->rel_op = "<";
@@ -385,7 +429,7 @@ RelExp
   }
   | RelExp '>' AddExp{
     auto ast = new RelExpAST();
-    ast->add_exp = NULL;
+    ast->add_exp = nullptr;
     ast->rel_exp_1 = unique_ptr<ExpAST>($1);
     ast->add_exp_2 = unique_ptr<ExpAST>($3);
     ast->rel_op = ">";
@@ -393,7 +437,7 @@ RelExp
   }
   | RelExp LESS_EQ AddExp{
     auto ast = new RelExpAST();
-    ast->add_exp = NULL;
+    ast->add_exp = nullptr;
     ast->rel_exp_1 = unique_ptr<ExpAST>($1);
     ast->add_exp_2 = unique_ptr<ExpAST>($3);
     ast->rel_op = "<=";
@@ -401,7 +445,7 @@ RelExp
   }
   | RelExp GREAT_EQ AddExp{
     auto ast = new RelExpAST();
-    ast->add_exp = NULL;
+    ast->add_exp = nullptr;
     ast->rel_exp_1 = unique_ptr<ExpAST>($1);
     ast->add_exp_2 = unique_ptr<ExpAST>($3);
     ast->rel_op = ">=";
@@ -417,7 +461,7 @@ EqExp
   }
   | EqExp EQUAL RelExp {
     auto ast = new EqExpAST();
-    ast->rel_exp = NULL;
+    ast->rel_exp = nullptr;
     ast->eq_exp_1 = unique_ptr<ExpAST>($1);
     ast->rel_exp_2 = unique_ptr<ExpAST>($3);
     ast->eq_op = "==";
@@ -425,7 +469,7 @@ EqExp
   }
   | EqExp NOT_EQUAL RelExp {
     auto ast = new EqExpAST();
-    ast->rel_exp = NULL;
+    ast->rel_exp = nullptr;
     ast->eq_exp_1 = unique_ptr<ExpAST>($1);
     ast->rel_exp_2 = unique_ptr<ExpAST>($3);
     ast->eq_op = "!=";
@@ -441,7 +485,7 @@ LAndExp
   }
   | LAndExp AND EqExp {
     auto ast = new LAndExpAST();
-    ast->eq_exp = NULL;
+    ast->eq_exp = nullptr;
     ast->l_and_exp_1 = unique_ptr<ExpAST>($1);
     ast->eq_exp_2 = unique_ptr<ExpAST>($3);
     $$ = ast;
@@ -456,7 +500,7 @@ LOrExp
   }
   | LOrExp OR LAndExp {
     auto ast = new LOrExpAST();
-    ast->l_and_exp = NULL;
+    ast->l_and_exp = nullptr;
     ast->l_or_exp_1 = unique_ptr<ExpAST>($1);
     ast->l_and_exp_2 = unique_ptr<ExpAST>($3);
     $$ = ast;
