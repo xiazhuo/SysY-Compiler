@@ -617,13 +617,5 @@ ConstExp
 void yyerror(unique_ptr<BaseAST> &ast, const char *s) {
     extern int yylineno;    // defined and maintained in lex
     extern char *yytext;    // defined and maintained in lex
-    int len=strlen(yytext);
-    int i;
-    char buf[512]={0};
-    for (i=0;i<len;++i)
-    {
-        sprintf(buf,"%s%d ",buf,yytext[i]);
-    }
-    fprintf(stderr, "ERROR: %s at symbol '%s' on line %d\n", s, buf, yylineno);
-
+    fprintf(stderr, "ERROR: %s at symbol '%s' on line %d\n", s, yytext, yylineno);
 }

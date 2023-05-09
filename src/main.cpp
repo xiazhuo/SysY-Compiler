@@ -14,6 +14,9 @@ extern FILE *yyin;
 extern KoopaString ks;          // 封装了一个生成 KoopaIR的类
 extern RiscvString rvs;         // 封装了一个生成 riscvStr的类
 extern int yyparse(unique_ptr<BaseAST> &ast);
+extern void yyset_lineno(int _line_number);
+extern int yylex_destroy();
+
 extern void koopa_ir_from_str(string);
 
 // 向文件中写数据
@@ -40,8 +43,10 @@ int main(int argc, const char *argv[])
   assert(yyin);
 
   // parse input file
+  yyset_lineno(1);
   unique_ptr<BaseAST> ast;
   auto ret = yyparse(ast);
+  yylex_destroy();
   assert(!ret);
 
   // 遍历 AST的同时生成 KoopaIR
