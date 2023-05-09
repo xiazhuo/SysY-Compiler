@@ -46,14 +46,18 @@ void yyerror(unique_ptr<BaseAST> &ast, const char *s);
   LValAST *lval;
 }
 
+// 消除ELSE冲突
+%nonassoc LOWER_THEN_ELSE
+%nonassoc ELSE
+
 // lexer 返回的所有 token 种类的声明
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT VOID RETURN LESS_EQ GREAT_EQ EQUAL NOT_EQUAL AND OR CONST IF ELSE WHILE BREAK CONTINUE
+%token INT VOID RETURN LESS_EQ GREAT_EQ EQUAL NOT_EQUAL AND OR CONST IF WHILE BREAK CONTINUE
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义
-%type <ast_val> FuncDef Block Stmt BlockItem MatchedStmt OpenStmt OtherStmt
+%type <ast_val> FuncDef Block Stmt BlockItem
 %type <def_ast> Decl ConstDecl VarDecl ConstDef VarDef 
 %type <exp_val> Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp ConstInitVal InitVal
 %type <var_list> VarDefList
@@ -267,32 +271,7 @@ VarDef
   ;
 
 Stmt
-  : MatchedStmt {
-    $$ = $1;
-  } 
-  | OpenStmt {
-    $$ = $1;
-  }
-  ;
-
-// 若有IF则一定有匹配的ELSE
-MatchedStmt
-  : IF '(' Exp ')' MatchedStmt ELSE MatchedStmt {
-    auto ast = new StmtAST();
-    ast->tag = StmtAST::IF;
-    ast->exp = unique_ptr<ExpAST>($3);
-    ast->if_stmt = unique_ptr<BaseAST>($5);
-    ast->else_stmt = unique_ptr<BaseAST>($7);
-    $$ = ast;
-  } 
-  | OtherStmt {
-    $$ = $1;
-  }
-  ;
-
-// IF后可以不接ELSE（一定在最后）
-OpenStmt
-  : IF '(' Exp ')' Stmt {
+  : IF '(' Exp ')' Stmt %prec LOWER_THEN_ELSE {
     auto ast = new StmtAST();
     ast->tag = StmtAST::IF;
     ast->exp = unique_ptr<ExpAST>($3);
@@ -300,7 +279,7 @@ OpenStmt
     ast->else_stmt = nullptr;
     $$ = ast;
   }
-  | IF '(' Exp ')' MatchedStmt ELSE OpenStmt {
+  | IF '(' Exp ')' Stmt ELSE Stmt {
     auto ast = new StmtAST();
     ast->tag = StmtAST::IF;
     ast->exp = unique_ptr<ExpAST>($3);
@@ -308,10 +287,7 @@ OpenStmt
     ast->else_stmt = unique_ptr<BaseAST>($7);
     $$ = ast;
   }
-  ;
-
-OtherStmt
-  : LVal '=' Exp ';' {
+  | LVal '=' Exp ';' {
     auto ast = new StmtAST();
     ast->tag = StmtAST::ASSIGN;
     ast->lval = unique_ptr<LValAST>($1);
