@@ -12,40 +12,105 @@ WhileStack wst;
 
 void CompUnitAST::Dump() const {
     st.alloc();     // 全局作用域栈
-    func_def->Dump();
+
+    // 全局变量
+    int len = decls.size();
+    for (int i = 0; i < len; i++)
+        decls[i]->Dump(true);
+    if(len)
+        ks.append("\n");
+
+    // 库函数声明
+    ks.declLibFunc();
+    st.insertFUNC("getint", SysYType::SYSY_FUNC_INT);
+    st.insertFUNC("getch", SysYType::SYSY_FUNC_INT);
+    st.insertFUNC("getarray", SysYType::SYSY_FUNC_INT);
+    st.insertFUNC("putint", SysYType::SYSY_FUNC_VOID);
+    st.insertFUNC("putch", SysYType::SYSY_FUNC_VOID);
+    st.insertFUNC("putarray", SysYType::SYSY_FUNC_VOID);
+    st.insertFUNC("starttime", SysYType::SYSY_FUNC_VOID);
+    st.insertFUNC("stoptime", SysYType::SYSY_FUNC_VOID);
+
+    // 全局函数
+    len = func_defs.size();
+    for (int i = 0; i < len; i++)
+        func_defs[i]->Dump();
+
     st.quit();
     return;
 }
 
 void FuncDefAST::Dump() const {
     st.resetNameManager();
-    ks.append("fun @" + ident + " (): ");
-    func_type->Dump();
+
+    // 函数名加到符号表 (全局)
+    st.insertFUNC(ident, func_type->tag == BTypeAST::INT ? SysYType::SYSY_FUNC_INT : SysYType::SYSY_FUNC_VOID);
+    ks.append("fun " + st.getName(ident) + "(");
+
+    st.alloc();
+    int i = 0, len = func_f_params.size();
+    // 不直接使用参数中的变量
+    vector<string> var_names;
+    if(len){
+        var_names.push_back(st.getVarName(func_f_params[i]->ident));
+        ks.append(var_names.back() + ": ");
+        func_f_params[i]->btype->Dump();
+        for (i++; i < len; i++)
+        {
+            ks.append(", ");
+            var_names.push_back(st.getVarName(func_f_params[i]->ident));
+            ks.append(var_names.back() + ": ");
+            func_f_params[i]->btype->Dump();
+        }
+    }
+    ks.append(")");
+    if (func_type->tag == BTypeAST::INT)
+    {
+        ks.append(": i32");
+    }
     ks.append(" {\n");
+
     bc.set();           // 函数是一个基本块
     ks.label("%entry");
+
+    // 将参数中的变量映射为新变量后插入到函数作用域中，即参数中的变量并不在此函数中
+    for (i = 0; i < len; i++)
+    {
+        st.insertINT(func_f_params[i]->ident);
+        string var = var_names[i];
+        string name = st.getName(func_f_params[i]->ident);
+        ks.alloc(name);
+        ks.store(var, name);
+    }
+
     block->Dump();
     // 特判空块
     if (bc.alive())
     {
-        ks.ret("0");
+        if (func_type->tag == BTypeAST::INT)
+            ks.ret("0");
+        else
+            ks.ret("");
         bc.finish();
     }
-    ks.append("}");
+    ks.append("}\n\n");
+    st.quit();
     return;
 }
 
-void FuncTypeAST::Dump() const {
-    ks.append("i32");
-    return;
+void BTypeAST::Dump() const
+{
+    if (tag == BTypeAST::INT)
+    {
+        ks.append("i32");
+    }
 }
 
 void BlockAST::Dump() const {
     st.alloc();
     int len = block_items.size();
 
-    // 注意识别的时候从后往前
-    for (int i = len - 1; i >= 0; i--)
+    for (int i = 0; i < len; i++)
     {
         block_items[i]->Dump();
     }
@@ -64,52 +129,61 @@ void BlockItemAST::Dump() const
         stmt->Dump();
 }
 
-void DeclAST::Dump() const
+void DeclAST::Dump(bool is_global) const
 {
     if (var_decl)
-        var_decl->Dump();
+        var_decl->Dump(is_global);
     else
-        const_decl->Dump();
+        const_decl->Dump(is_global);
 }
 
-void ConstDeclAST::Dump() const
+void ConstDeclAST::Dump(bool is_global) const
 {
     int len = const_defs.size();
-    for (int i = len - 1; i >= 0; i--)
+    for (int i = 0; i < len; i++)
     {
-        const_defs[i]->Dump();
+        const_defs[i]->Dump(is_global);
     }
 }
 
-void VarDeclAST::Dump() const
+void VarDeclAST::Dump(bool is_global) const
 {
     int len = var_defs.size();
-    for (int i = len - 1; i >= 0; i--)
+    for (int i = 0; i < len; i++)
     {
-        var_defs[i]->Dump();
+        var_defs[i]->Dump(is_global);
     }
 }
 
-void BTypeAST::Dump() const
-{
-    ks.append("i32");
-}
-
-void ConstDefAST::Dump() const
+void ConstDefAST::Dump(bool is_global) const
 {
     int v = const_init_val->getValue();
     st.insertINTCONST(ident, v);
 }
 
-void VarDefAST::Dump() const
+void VarDefAST::Dump(bool is_global) const
 {
     st.insertINT(ident);
     string name = st.getName(ident);
-    ks.alloc(name);
-    if (init_val)
+    if (is_global)
     {
-        string s = init_val->Dump();
-        ks.store(s, name);
+        if (!init_val)
+        {
+            ks.globalAllocINT(name);
+        }
+        else
+        {
+            int v = init_val->getValue();
+            ks.globalAllocINT(name, to_string(v));
+        }
+    }
+    else{
+        ks.alloc(name);
+        if (init_val)
+        {
+            string s = init_val->Dump();
+            ks.store(s, name);
+        }
     }
     return;
 }
@@ -241,23 +315,44 @@ int PrimaryExpAST::getValue() const {
 string UnaryExpAST::Dump() const {
     if (primary_exp)
         return primary_exp->Dump();
-    string exp = unary_exp->Dump();
-    string ans;
-    if (unary_op == "+")
+    else if (unary_exp)
     {
-        return exp;
+        string exp = unary_exp->Dump();
+        string ans;
+        if (unary_op == "+")
+        {
+            return exp;
+        }
+        else if (unary_op == "-")
+        {
+            ans = st.getTmpName();
+            ks.binary("sub", ans, "0", exp);
+        }
+        else if (unary_op == "!")
+        {
+            ans = st.getTmpName();
+            ks.binary("eq", ans, exp, "0");
+        }
+        return ans;
     }
-    else if(unary_op == "-")
+    else
     {
-        ans = st.getTmpName();
-        ks.binary("sub", ans, "0", exp);
+        // Func_Call
+        string tmp = "";
+        vector<string> par;
+        // 是否有返回值
+        if (st.getType(ident)->ty == SysYType::SYSY_FUNC_INT)
+        {
+            tmp = st.getTmpName();
+        }
+        int len = exps.size();
+        for (int i = 0; i < len; i++)
+        {
+            par.push_back(exps[i]->Dump());
+        }
+        ks.call(tmp, st.getName(ident), par);
+        return tmp;
     }
-    else if (unary_op == "!")
-    {
-        ans = st.getTmpName();
-        ks.binary("eq", ans, exp, "0");
-    }
-    return ans;
 }
 
 int UnaryExpAST::getValue() const {

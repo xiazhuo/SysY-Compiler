@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <stack>
+#include <vector>
 
 using namespace std;
 
@@ -33,6 +34,11 @@ public:
         koopa_str += "  " + name + " = alloc i32\n";
     }
 
+    void globalAllocINT(const string &name, const string &init = "zeroinit")
+    {
+        koopa_str += "global " + name + " = alloc i32, " + init + "\n";
+    }
+
     void load(const string &to, const string &from)
     {
         koopa_str += "  " + to + " = load " + from + '\n';
@@ -56,6 +62,42 @@ public:
     void jump(const string &label)
     {
         koopa_str += "  jump " + label + '\n';
+    }
+
+    void call(const string &to, const string &func, const vector<string> &params)
+    {
+        if (to.length())
+        {
+            koopa_str += "  " + to + " = ";
+        }
+        else
+        {
+            koopa_str += "  ";
+        }
+        koopa_str += "call " + func + "(";
+        if (params.size())
+        {
+            int n = params.size();
+            koopa_str += params[0];
+            for (int i = 1; i < n; i++)
+            {
+                koopa_str += ", " + params[i];
+            }
+        }
+        koopa_str += ")\n";
+    }
+
+    void declLibFunc()
+    {
+        koopa_str.append("decl @getint(): i32\n");
+        koopa_str.append("decl @getch(): i32\n");
+        koopa_str.append("decl @getarray(*i32): i32\n");
+        koopa_str.append("decl @putint(i32)\n");
+        koopa_str.append("decl @putch(i32)\n");
+        koopa_str.append("decl @putarray(i32, *i32)\n");
+        koopa_str.append("decl @starttime()\n");
+        koopa_str.append("decl @stoptime()\n");
+        koopa_str.append("\n");
     }
 
     string getKoopaIR(){

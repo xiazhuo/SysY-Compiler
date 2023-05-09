@@ -27,12 +27,13 @@ public:
     }
     // 返回Sysy具名变量在Koopa中的变量名，如 @x,@y,重名时后缀加一，@x_1,@y_1
     string getVarName(const string &s){
-        // 若是第一次生成就是@s_1
+        // 若是第一次生成就是@s
         if (!no.count(s))
         {
-            no[s] = 1;
-            return "@" + s + "_1";
+            no[s] = 0;
+            return "@" + s;
         }
+        // 后续后缀加一
         return "@" + s + "_" + to_string(++no[s]);
     }
 
@@ -87,8 +88,10 @@ class SysYType
 public:
     enum TYPE
     {
-        SYSY_INT,           // 变量
-        SYSY_INT_CONST,     // 常量
+        SYSY_INT,       // 变量
+        SYSY_INT_CONST, // 常量
+        SYSY_FUNC_VOID,
+        SYSY_FUNC_INT
     };
 
     TYPE ty;
@@ -142,6 +145,12 @@ public:
         symbol_tb.insert({ident, sym});
     }
 
+    void insertFUNC(const string &ident, const string &name, SysYType::TYPE _t){
+        SysYType *ty = new SysYType(_t);
+        Symbol *sym = new Symbol(name, ty);
+        symbol_tb.insert({ident, sym});
+    }
+
     bool isExists(const string &ident){
         return symbol_tb.find(ident) != symbol_tb.end();
     }
@@ -189,6 +198,12 @@ public:
     {
         string name = nm.getVarName(ident);
         sym_tb_st.back()->insertINTCONST(ident, name, value);
+    }
+
+    void insertFUNC(const string &ident, SysYType::TYPE _t)
+    {
+        string name = "@" + ident;
+        sym_tb_st.back()->insertFUNC(ident, name, _t);
     }
 
     // 从栈底开始往上依次查找

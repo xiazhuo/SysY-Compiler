@@ -6,27 +6,28 @@
 
 using namespace std;
 
-// 所有类的声明
+// 框架类的声明
 class BaseAST;
 class CompUnitAST;
-class DeclAST;
-class ConstDeclAST;
-class BTypeAST;
-class ConstDefAST;
-class ConstInitValAST;
-class VarDeclAST;
-class VarDefAST;
-class InitValAST;
-
 class FuncDefAST;
-class FuncTypeAST;
+class FuncFParamAST;
+class BTypeAST;
 class BlockAST;
 class BlockItemAST;
 class StmtAST;
 
-// Expression
-class ExpAST;
+// 定义式类
+class DefAST;
+class DeclAST;
+class ConstDeclAST;
+class VarDeclAST;
+class ConstDefAST;
+class VarDefAST;
+
 class LValAST;
+
+// 表达式类
+class ExpAST;
 class PrimaryExpAST;
 class UnaryExpAST;
 class AddExpAST;
@@ -36,6 +37,8 @@ class EqExpAST;
 class LAndExpAST;
 class LOrExpAST;
 class ConstExpAST;
+class ConstInitValAST;
+class InitValAST;
 
 // 程序框架的基类
 class BaseAST {
@@ -48,21 +51,39 @@ class BaseAST {
 class CompUnitAST : public BaseAST {
   public:
   // 用智能指针管理对象
-    unique_ptr<BaseAST> func_def;
+    vector<unique_ptr<BaseAST>> func_defs;
+    vector<unique_ptr<DefAST>> decls;
 
     void Dump() const override;
 };
 
+// 函数定义都在全局作用域内
 class FuncDefAST : public BaseAST {
   public:
-    unique_ptr<BaseAST> func_type;
+    unique_ptr<BTypeAST> func_type; // 返回值类型
     string ident;
+    vector<unique_ptr<FuncFParamAST>> func_f_params;
     unique_ptr<BaseAST> block;
 
     void Dump() const override;
 };
 
-class FuncTypeAST : public BaseAST {
+class FuncFParamAST
+{
+  public:
+    unique_ptr<BaseAST> btype;
+    string ident;
+};
+
+class BTypeAST : public BaseAST
+{
+  public:
+    enum TAG
+    {
+      VOID,
+      INT
+    };
+    TAG tag;
     void Dump() const override;
 };
 
@@ -76,54 +97,9 @@ class BlockAST : public BaseAST {
 class BlockItemAST : public BaseAST
 {
   public:
-    unique_ptr<BaseAST> decl;
+    unique_ptr<DefAST> decl;
     unique_ptr<BaseAST> stmt;
 
-    void Dump() const override;
-};
-
-class DeclAST : public BaseAST
-{
-  public:
-    unique_ptr<BaseAST> const_decl;
-    unique_ptr<BaseAST> var_decl;
-    void Dump() const override;
-};
-
-class ConstDeclAST : public BaseAST
-{
-  public:
-    unique_ptr<BaseAST> btype;
-    vector<unique_ptr<BaseAST>> const_defs;
-    void Dump() const override;
-};
-
-class BTypeAST : public BaseAST
-{
-    void Dump() const override;
-};
-
-class ConstDefAST : public BaseAST
-{
-  public:
-    string ident;
-    unique_ptr<ExpAST> const_init_val;
-    void Dump() const override;
-};
-
-class VarDeclAST : public BaseAST
-{
-  public:
-    unique_ptr<BaseAST> btype;
-    vector<unique_ptr<BaseAST>> var_defs;
-    void Dump() const override;
-};
-
-class VarDefAST : public BaseAST
-{
-  public:
-    string ident;
-    unique_ptr<ExpAST> init_val;
     void Dump() const override;
 };
 
@@ -153,6 +129,64 @@ class StmtAST : public BaseAST
 };
 
 
+// 定义式的基类
+class DefAST
+{
+  public:
+    virtual ~DefAST() = default;
+
+    virtual void Dump(bool is_global = false) const = 0;
+};
+
+class DeclAST : public DefAST
+{
+  public:
+    unique_ptr<DefAST> const_decl;
+    unique_ptr<DefAST> var_decl;
+    void Dump(bool is_global = false) const override;
+};
+
+class ConstDeclAST : public DefAST
+{
+  public:
+    unique_ptr<BaseAST> btype;
+    vector<unique_ptr<DefAST>> const_defs;
+    void Dump(bool is_global = false) const override;
+};
+
+class VarDeclAST : public DefAST
+{
+  public:
+    unique_ptr<BaseAST> btype;
+    vector<unique_ptr<DefAST>> var_defs;
+    void Dump(bool is_global = false) const override;
+};
+
+class ConstDefAST : public DefAST
+{
+  public:
+    string ident;
+    unique_ptr<ExpAST> const_init_val;
+    void Dump(bool is_global = false) const override;
+};
+
+class VarDefAST : public DefAST
+{
+  public:
+    string ident;
+    unique_ptr<ExpAST> init_val;
+    void Dump(bool is_global = false) const override;
+};
+
+class LValAST
+{
+  public:
+    string ident;
+    string Dump(bool dump_ptr = false) const; // 赋值时store到 @x，计算时load到 %n
+    int getValue() const;
+};
+
+
 // 所有表达式的基类
 class ExpAST {
   public:
@@ -177,18 +211,8 @@ class UnaryExpAST : public ExpAST {
     string unary_op;
     unique_ptr<ExpAST> primary_exp;
     unique_ptr<ExpAST> unary_exp;
-
-    string Dump() const override;
-    int getValue() const override;
-};
-
-class MulExpAST : public ExpAST
-{
-  public:
-    string mul_op;
-    unique_ptr<ExpAST> unary_exp;
-    unique_ptr<ExpAST> mul_exp_1;
-    unique_ptr<ExpAST> unary_exp_2;
+    string ident;
+    vector<unique_ptr<ExpAST>> exps;
 
     string Dump() const override;
     int getValue() const override;
@@ -201,6 +225,18 @@ class AddExpAST : public ExpAST
     unique_ptr<ExpAST> mul_exp;
     unique_ptr<ExpAST> add_exp_1;
     unique_ptr<ExpAST> mul_exp_2;
+
+    string Dump() const override;
+    int getValue() const override;
+};
+
+class MulExpAST : public ExpAST
+{
+  public:
+    string mul_op;
+    unique_ptr<ExpAST> unary_exp;
+    unique_ptr<ExpAST> mul_exp_1;
+    unique_ptr<ExpAST> unary_exp_2;
 
     string Dump() const override;
     int getValue() const override;
@@ -252,11 +288,12 @@ class LOrExpAST : public ExpAST
     int getValue() const override;
 };
 
-class InitValAST : public ExpAST
+class ConstExpAST : public ExpAST
 {
   public:
     unique_ptr<ExpAST> exp;
-    string Dump() const override;
+
+    string Dump() const override { return ""; }
     int getValue() const override;
 };
 
@@ -269,19 +306,10 @@ class ConstInitValAST : public ExpAST
     int getValue() const override;
 };
 
-class LValAST
-{
-  public:
-    string ident;
-    string Dump(bool dump_ptr = false) const;   // 赋值时store到 @x，计算时load到 %n
-    int getValue() const;
-};
-
-class ConstExpAST : public ExpAST
+class InitValAST : public ExpAST
 {
   public:
     unique_ptr<ExpAST> exp;
-
-    string Dump() const override { return ""; }
+    string Dump() const override;
     int getValue() const override;
 };
