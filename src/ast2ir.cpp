@@ -10,15 +10,100 @@ KoopaString ks;
 BlockController bc;
 WhileStack wst;
 
+// 部分实用函数（大部分是因为要递归因此单独拎出来）
+// 局部变量数组初始化
+// 初始化内容在ptr所指的内存区域，数组类型由len描述. ptr[i]为常量，或者是KoopaIR中的名字
+void initLocalArray(string name, string *ptr, const vector<int> &len)
+{
+    int n = len[0];
+    if (len.size() == 1)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            if(ptr[i] == "0")
+                continue;
+            string tmp = st.getTmpName();
+            ks.getelemptr(tmp, name, to_string(i));
+            ks.store(ptr[i], tmp);
+        }
+    }
+    else
+    {
+        int width = 1;
+        vector<int> sublen(len.begin() + 1, len.end());
+        for (auto l : sublen)
+            width *= l;
+        for (int i = 0; i < n; ++i)
+        {
+            string tmp = st.getTmpName();
+            if (ptr[i*width] != "0"){
+                ks.getelemptr(tmp, name, to_string(i));
+            }
+            initLocalArray(tmp, ptr + i * width, sublen);
+        }
+    }
+}
+
+// 全局变量数组初始化
+string initGlobalArray(string *ptr, const vector<int> &len)
+{
+    int n = len[0];
+    string ret = "{";
+    if (len.size() == 1)
+    {
+        ret += ptr[0];
+        for (int i = 1; i < n; ++i)
+        {
+            ret += ", " + ptr[i];
+        }
+    }
+    else
+    {
+        int width = 1;
+        vector<int> sublen(len.begin() + 1, len.end());
+        for (auto l : sublen)
+            width *= l;
+        ret += initGlobalArray(ptr, sublen);
+        for (int i = 1; i < n; ++i)
+        {
+            ret += ", " + initGlobalArray(ptr + width * i, sublen);
+        }
+    }
+    ret += "}";
+    return ret;
+}
+
+string getArrayType(const vector<int> &len)
+{
+    string ans = "i32";
+    // 从最内层到最外层迭代
+    for (int i = len.size() - 1; i >= 0; i--)
+    {
+        ans = "[" + ans + ", " + to_string(len[i]) + "]";
+    }
+    return ans;
+}
+
+string getElemPtr(const string &name, const vector<string> &index)
+{
+    if (index.size() == 1)
+    {
+        string tmp = st.getTmpName();
+        ks.getelemptr(tmp, name, index[0]);
+        return tmp;
+    }
+    else
+    {
+        string tmp = st.getTmpName();
+        ks.getelemptr(tmp, name, index[0]);
+        return getElemPtr(
+            tmp,
+            vector<string>(index.begin() + 1, index.end()));
+    }
+}
+
 void CompUnitAST::Dump() const {
     st.alloc();     // 全局作用域栈
-
-    // 全局变量
-    int len = decls.size();
-    for (int i = 0; i < len; i++)
-        decls[i]->Dump(true);
-    if(len)
-        ks.append("\n");
 
     // 库函数声明
     ks.declLibFunc();
@@ -30,6 +115,13 @@ void CompUnitAST::Dump() const {
     st.insertFUNC("putarray", SysYType::SYSY_FUNC_VOID);
     st.insertFUNC("starttime", SysYType::SYSY_FUNC_VOID);
     st.insertFUNC("stoptime", SysYType::SYSY_FUNC_VOID);
+
+    // 全局变量
+    int len = decls.size();
+    for (int i = 0; i < len; i++)
+        decls[i]->Dump(true);
+    if (len)
+        ks.append("\n");
 
     // 全局函数
     len = func_defs.size();
@@ -44,23 +136,24 @@ void FuncDefAST::Dump() const {
     st.resetNameManager();
 
     // 函数名加到符号表 (全局)
-    st.insertFUNC(ident, func_type->tag == BTypeAST::INT ? SysYType::SYSY_FUNC_INT : SysYType::SYSY_FUNC_VOID);
+    st.insertFUNC(ident, func_type->tag == BTypeAST::INT ? 
+            SysYType::SYSY_FUNC_INT : SysYType::SYSY_FUNC_VOID);
     ks.append("fun " + st.getName(ident) + "(");
 
     st.alloc();
     int i = 0, len = func_f_params.size();
-    // 不直接使用参数中的变量
+    // 打印函数类型，但不直接使用参数中的变量，因此先不加入符号表中
     vector<string> var_names;
     if(len){
         var_names.push_back(st.getVarName(func_f_params[i]->ident));
         ks.append(var_names.back() + ": ");
-        func_f_params[i]->btype->Dump();
+        func_f_params[i]->Dump();
         for (i++; i < len; i++)
         {
             ks.append(", ");
             var_names.push_back(st.getVarName(func_f_params[i]->ident));
             ks.append(var_names.back() + ": ");
-            func_f_params[i]->btype->Dump();
+            func_f_params[i]->Dump();
         }
     }
     ks.append(")");
@@ -76,11 +169,29 @@ void FuncDefAST::Dump() const {
     // 将参数中的变量映射为新变量后插入到函数作用域中，即参数中的变量并不在此函数中
     for (i = 0; i < len; i++)
     {
-        st.insertINT(func_f_params[i]->ident);
         string var = var_names[i];
-        string name = st.getName(func_f_params[i]->ident);
-        ks.alloc(name);
-        ks.store(var, name);
+        if (func_f_params[i]->tag == FuncFParamAST::VARIABLE){
+            st.insertINT(func_f_params[i]->ident);
+            string name = st.getName(func_f_params[i]->ident);
+            ks.alloc(name);
+            ks.store(var, name);
+        }else{
+            vector<int> len;
+            vector<int> padding_len;    // 数组指针维度（第一维设置为-1，表示指针）
+            padding_len.push_back(-1);
+
+            func_f_params[i]->getIndex(len);
+            for (int l : len)
+                padding_len.push_back(l);
+
+            // 实际上插入的是数组指针，这里复用了接口
+            st.insertArray(func_f_params[i]->ident, padding_len, SysYType::SYSY_ARRAY);
+            string name = st.getName(func_f_params[i]->ident);
+
+            // 注意，这里应该传len，而不是padding_len
+            ks.alloc(name, "*" + getArrayType(len));
+            ks.store(var, name);
+        }
     }
 
     block->Dump();
@@ -95,6 +206,34 @@ void FuncDefAST::Dump() const {
     }
     ks.append("}\n\n");
     st.quit();
+    return;
+}
+
+// 返回参数类型，如i32, *[i32, 4]
+void FuncFParamAST::Dump() const
+{
+    if (tag == VARIABLE)
+    {
+        ks.append("i32");
+        return;
+    }
+    string ans = "i32";
+    for (auto &ce : const_exps)
+    {
+        ans = "[" + ans + ", " + to_string(ce->getValue()) + "]";
+    }
+    ks.append("*" + ans);
+    return;
+}
+
+// 得到数组指针各维度的长度信息
+void FuncFParamAST::getIndex(vector<int> &len) const
+{
+    len.clear();
+    for (auto &ce : const_exps)
+    {
+        len.push_back(ce->getValue());
+    }
     return;
 }
 
@@ -157,12 +296,61 @@ void VarDeclAST::Dump(bool is_global) const
 
 void ConstDefAST::Dump(bool is_global) const
 {
+    if(const_exps.size()){
+        DumpArray(is_global);
+        return;
+    }
     int v = const_init_val->getValue();
     st.insertINTCONST(ident, v);
 }
 
+void ConstDefAST::DumpArray(bool is_global) const
+{
+    vector<int> len;
+    for (auto &ce : const_exps)
+    {
+        len.push_back(ce->getValue());
+    }
+    st.insertArray(ident, len, SysYType::SYSY_ARRAY_CONST);
+
+    string name = st.getName(ident);
+    string array_type = getArrayType(len);
+
+    // 若全局初始化列表为空，则用zeroinit初始化
+    if (is_global && const_init_val->inits.size()==0){
+        ks.globalAllocArray(name, array_type);
+        return;
+    }
+
+    // 得到补完 0之后的初始化列表
+    int total_len = 1;
+    for (auto i : len)
+        total_len *= i;
+    string *init = new string[total_len];
+    for (int i = 0; i < total_len; i++)
+        init[i] = "0";
+    const_init_val->getInitVal(init, len);
+
+    if (is_global)
+    {
+        ks.globalAllocArray(name, array_type, initGlobalArray(init, len));
+    }
+    else
+    {
+        ks.alloc(name, array_type);
+        ks.store("zeroinit", name);
+        initLocalArray(name, init, len);
+    }
+    return;
+}
+
 void VarDefAST::Dump(bool is_global) const
 {
+    if (const_exps.size())
+    {
+        DumpArray(is_global);
+        return;
+    }
     st.insertINT(ident);
     string name = st.getName(ident);
     if (is_global)
@@ -184,6 +372,61 @@ void VarDefAST::Dump(bool is_global) const
             string s = init_val->Dump();
             ks.store(s, name);
         }
+    }
+    return;
+}
+
+void VarDefAST::DumpArray(bool is_global) const
+{
+    vector<int> len;
+    for (auto &ce : const_exps)
+    {
+        len.push_back(ce->getValue());
+    }
+    st.insertArray(ident, len, SysYType::SYSY_ARRAY);
+
+    string name = st.getName(ident);
+    string array_type = getArrayType(len);
+
+    // 若没有初始化列表
+    if(init_val == nullptr){
+        if(is_global)
+            ks.globalAllocArray(name, array_type);
+        else
+            ks.alloc(name, array_type);
+        return;
+    }
+
+    // 若全局初始化列表为空，则用zeroinit初始化
+    if (is_global && init_val->inits.size()==0){
+        ks.globalAllocArray(name, array_type);
+        return;
+    }
+
+    // 得到补完 0之后的初始化列表
+    int total_len = 1;
+    for (auto i : len)
+        total_len *= i;
+    string *init = new string[total_len];
+    for (int i = 0; i < total_len; i++)
+        init[i] = "0";
+
+    if (is_global)
+    {
+        // 全局变量初始化要在编译期求得初始值
+        init_val->getInitVal(init, len, true);
+
+        ks.globalAllocArray(name, array_type, initGlobalArray(init, len));
+    }
+    else
+    {
+        // 局部变量初始化是在运行时求值
+        // TO DO: 未初始化的变量不赋值
+        init_val->getInitVal(init, len, false);
+
+        ks.alloc(name, array_type);
+        ks.store("zeroinit",name);
+        initLocalArray(name, init, len);
     }
     return;
 }
@@ -552,25 +795,196 @@ int InitValAST::getValue() const
     return exp->getValue();
 }
 
+// 难点：得到填充0后的初始化列表
+void InitValAST::getInitVal(string *ptr, const vector<int> &len, bool is_global) const
+{
+    int n = len.size();
+    vector<int> width(n);
+    width[n - 1] = len[n - 1];
+    for (int i = n - 2; i >= 0; --i)
+    {
+        width[i] = width[i + 1] * len[i];
+    }
+    int i = 0; // 指向下一步要填写的内存位置
+    for (auto &init_val : inits)
+    {
+        // 递归终点
+        if (init_val->exp)
+        {
+            // 全局变量要在编译期求得初始值
+            if (is_global)
+            {
+                ptr[i++] = to_string(init_val->exp->getValue());
+            }
+            // 局部变量在运行时算出
+            else
+            {
+                ptr[i++] = init_val->Dump();
+            }
+        }
+        else
+        {
+            int j = n - 1;
+            if (i == 0)
+            {
+                j = 1;
+            }
+            else
+            {
+                j = n - 1;
+                for (; j >= 0; --j)
+                {
+                    if (i % width[j] != 0)
+                        break;
+                }
+                ++j; // j 指向最大的可除的维度
+            }
+            init_val->getInitVal(
+                ptr + i,
+                vector<int>(len.begin() + j, len.end()));
+            i += width[j];
+        }
+        if (i >= width[0])
+            break;
+    }
+}
+
 int ConstInitValAST::getValue() const {
     return const_exp->getValue();
 }
 
+// 对ptr指向的区域初始化，所指区域的数组类型由len规定
+void ConstInitValAST::getInitVal(string *ptr, const vector<int> &len) const
+{
+    int n = len.size();
+    vector<int> width(n);
+    width[n - 1] = len[n - 1];
+    for (int i = n - 2; i >= 0; --i)
+    {
+        width[i] = width[i + 1] * len[i];
+    }
+    int i = 0; // 指向下一步要填写的内存位置
+    for (auto &init_val : inits)
+    {
+        if (init_val->const_exp)
+        {
+            ptr[i++] = to_string(init_val->getValue());
+        }
+        else
+        {
+            int j = n - 1;
+            if (i == 0)
+            {
+                j = 1;
+            }
+            else
+            {
+                j = n - 1;
+                for (; j >= 0; --j)
+                {
+                    if (i % width[j] != 0)
+                        break;
+                }
+                ++j;               // j 指向最大的可除的维度
+            }
+            init_val->getInitVal(
+                ptr + i,
+                vector<int>(len.begin() + j, len.end()));
+            i += width[j];
+        }
+        if (i >= width[0])
+            break;
+    }
+}
+
 string LValAST::Dump(bool dump_ptr) const {
     SysYType *ty = st.getType(ident);
-    if (ty->ty == SysYType::SYSY_INT_CONST)
-        return to_string(getValue());
-    else if (ty->ty == SysYType::SYSY_INT)
-    {
-        if (dump_ptr == false)
+    if(!exps.size()){
+        if (ty->ty == SysYType::SYSY_INT_CONST)
+            return to_string(getValue());
+        else if (ty->ty == SysYType::SYSY_INT)
         {
+            if (dump_ptr == false)
+            {
+                string tmp = st.getTmpName();
+                ks.load(tmp, st.getName(ident));
+                return tmp;
+            }
+            return st.getName(ident);
+        }
+        // 如int a[2][3] 中的 a,或int a[]中的 a
+        else
+        {
+            // 若是数组指针（变量）
+            if (ty->value == -1)
+            {
+                string tmp = st.getTmpName();
+                cout << tmp<<' '<<st.getName(ident) << "\n";
+                ks.load(tmp, st.getName(ident));
+                return tmp;
+            }
+            // 首值（常量）
             string tmp = st.getTmpName();
-            ks.load(tmp, st.getName(ident));
+            ks.getelemptr(tmp, st.getName(ident), "0");
             return tmp;
         }
-        return st.getName(ident);
     }
-    return "";
+    // 多维数组指针或数组值（为int）
+    else
+    {
+        vector<string> index;
+        vector<int> len;
+
+        for (auto &e : exps)
+        {
+            index.push_back(e->Dump());
+        }
+
+        ty->getIndex(len);
+
+        // hint: len可以是-1开头的，说明这个数组是函数中使用的参数
+        // 如 a[-1][3][2],表明a是参数 a[][3][2], 即 *[3][2].
+        // 此时第一步不能用getelemptr，而应该getptr
+
+        string name = st.getName(ident);
+        string tmp;
+        if (len.size() != 0 && len[0] == -1)
+        {
+            vector<int> sublen(len.begin() + 1, len.end());
+            string tmp_val = st.getTmpName();
+            ks.load(tmp_val, name);
+            string first_indexed = st.getTmpName();
+            ks.getptr(first_indexed, tmp_val, index[0]);
+            if (index.size() > 1)
+            {
+                tmp = getElemPtr(
+                    first_indexed,
+                    vector<string>(
+                        index.begin() + 1, index.end()));
+            }
+            else
+            {
+                tmp = first_indexed;
+            }
+        }
+        else
+        {
+            tmp = getElemPtr(name, index);
+        }
+
+        if (index.size() < len.size())
+        {
+            // 一定是作为函数参数即实参使用，因为下标不完整
+            string real_param = st.getTmpName();
+            ks.getelemptr(real_param, tmp, "0");
+            return real_param;
+        }
+        if (dump_ptr)
+            return tmp;
+        string tmp2 = st.getTmpName();
+        ks.load(tmp2, tmp);
+        return tmp2;
+    }
 }
 
 int LValAST::getValue() const {

@@ -38,6 +38,10 @@ void yyerror(unique_ptr<BaseAST> &ast, const char *s);
   VarDeclAST *var_list;
   ConstDeclAST *con_list;
   DefAST *def_ast;
+  VarDefAST *var_defs;
+  ConstDefAST *const_defs;
+  InitValAST *initval_list;
+  ConstInitValAST *constval_list;
   CompUnitAST *com_unit;
   FuncDefAST *func_defs;
   UnaryExpAST *unary_exps;
@@ -59,18 +63,22 @@ void yyerror(unique_ptr<BaseAST> &ast, const char *s);
 // 非终结符的类型定义
 %type <ast_val> FuncDef Block Stmt BlockItem
 %type <def_ast> Decl ConstDecl VarDecl ConstDef VarDef 
-%type <exp_val> Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp ConstInitVal InitVal
+%type <exp_val> Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp ConstExp
 %type <var_list> VarDefList
 %type <con_list> ConstDefList
+%type <var_defs> VarDefExpList
+%type <const_defs> ConstDefExpList
+%type <initval_list> InitValList InitVal
+%type <constval_list> ConstInitValList ConstInitVal
 %type <blk_list> BlockItemList
 %type <com_unit> DeclOrFuncDefList
 %type <func_defs> FuncFParams
 %type <unary_exps> FuncRParams
 %type <func_type> BType
-%type <func_f_param> FuncFParam
+%type <func_f_param> FuncFParam FuncFParamExpList
 %type <int_val> Number
 %type <str_val>  UnaryOp
-%type <lval> LVal
+%type <lval> LVal ExpList
 
 %%
 
@@ -137,8 +145,28 @@ FuncFParams
 FuncFParam
   : BType IDENT {
     auto ast = new FuncFParamAST();
+    ast->tag = FuncFParamAST::VARIABLE;
     ast->btype = unique_ptr<BaseAST>($1);
     ast->ident = *unique_ptr<string>($2);
+    $$ = ast;
+    } 
+    | BType IDENT '[' ']' FuncFParamExpList{
+    auto ast = $5;
+    ast->tag = FuncFParamAST::ARRAY;
+    ast->btype = unique_ptr<BaseAST>($1);
+    ast->ident = *unique_ptr<string>($2);
+    $$ = ast;
+  } 
+  ;
+
+FuncFParamExpList
+  : FuncFParamExpList '[' ConstExp ']' {
+    auto ast = $1;
+    ast->const_exps.emplace_back(unique_ptr<ExpAST>($3));
+    $$ = ast;
+  }
+  | {
+    auto ast = new FuncFParamAST();
     $$ = ast;
   }
   ;
@@ -226,10 +254,22 @@ ConstDefList
   ;
 
 ConstDef
-  : IDENT '=' ConstInitVal {
-    auto ast = new ConstDefAST();
+  : IDENT ConstDefExpList '=' ConstInitVal {
+    auto ast = $2;
     ast->ident = *unique_ptr<string>($1);
-    ast->const_init_val = unique_ptr<ExpAST>($3);
+    ast->const_init_val = unique_ptr<ConstInitValAST>($4);
+    $$ = ast;
+  }
+  ;
+
+ConstDefExpList
+  : ConstDefExpList '[' ConstExp ']' {
+    auto ast = $1;
+    ast->const_exps.emplace_back(unique_ptr<ExpAST>($3));
+    $$ = ast;
+  }
+  | {
+    auto ast = new ConstDefAST();
     $$ = ast;
   }
   ;
@@ -256,16 +296,28 @@ VarDefList
   ;
 
 VarDef
-  : IDENT {
-    auto ast = new VarDefAST();
+  : IDENT VarDefExpList {
+    auto ast = $2;
     ast->ident = *unique_ptr<string>($1);
     ast->init_val = nullptr;
     $$ = ast;
   }
-  | IDENT '=' InitVal {
-    auto ast = new VarDefAST();
+  | IDENT VarDefExpList '=' InitVal {
+    auto ast = $2;
     ast->ident = *unique_ptr<string>($1);
-    ast->init_val = unique_ptr<ExpAST>($3);
+    ast->init_val = unique_ptr<InitValAST>($4);
+    $$ = ast;
+  }
+  ;
+
+VarDefExpList
+  : VarDefExpList '[' ConstExp ']' {
+    auto ast = $1;
+    ast->const_exps.emplace_back(unique_ptr<ExpAST>($3));
+    $$ = ast;
+  }
+  | {
+    auto ast = new VarDefAST();
     $$ = ast;
   }
   ;
@@ -346,9 +398,21 @@ Stmt
   ;
 
 LVal
-  : IDENT {
-    auto ast = new LValAST();
+  : IDENT ExpList{
+    auto ast = $2;
     ast->ident = *unique_ptr<string>($1);
+    $$ = ast;
+  }
+  ;
+
+ExpList
+  : ExpList '[' Exp ']' {
+    auto ast = $1;
+    ast->exps.emplace_back(unique_ptr<ExpAST>($3));
+    $$ = ast;
+  }
+  | {
+    auto ast = new LValAST();
     $$ = ast;
   }
   ;
@@ -592,6 +656,27 @@ InitVal
     ast->exp = unique_ptr<ExpAST>($1);
     $$ = ast;
   }
+  | '{' '}' {
+    auto ast = new InitValAST();
+    ast->exp = nullptr;
+    $$ = ast;
+  } 
+  | '{' InitValList '}' {
+    $$ = $2;
+  }
+  ;
+
+InitValList
+  : InitValList ',' InitVal {
+    auto ast = $1;
+    ast->inits.emplace_back(unique_ptr<InitValAST>($3));
+    $$ = ast;
+  }
+  | InitVal {
+    auto ast = new InitValAST();
+    ast->inits.emplace_back(unique_ptr<InitValAST>($1));
+    $$ = ast;
+  }
   ;
 
 ConstInitVal
@@ -600,12 +685,33 @@ ConstInitVal
     ast->const_exp = unique_ptr<ExpAST>($1);
     $$ = ast;
   }
+  | '{' '}' {
+    auto ast = new ConstInitValAST();
+    ast->const_exp = nullptr;
+    $$ = ast;
+  } 
+  | '{' ConstInitValList '}' {
+    $$ = $2;
+  }
   ;
 
 ConstExp
   : Exp {
     auto ast = new ConstExpAST();
     ast->exp = unique_ptr<ExpAST>($1);
+    $$ = ast;
+  }
+  ;
+
+ConstInitValList
+  : ConstInitValList ',' ConstInitVal {
+    auto ast = $1;
+    ast->inits.emplace_back(unique_ptr<ConstInitValAST>($3));
+    $$ = ast;
+  }
+  | ConstInitVal {
+    auto ast = new ConstInitValAST();
+    ast->inits.emplace_back(unique_ptr<ConstInitValAST>($1));
     $$ = ast;
   }
   ;

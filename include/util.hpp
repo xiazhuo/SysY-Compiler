@@ -29,14 +29,19 @@ public:
         koopa_str += "  ret " + name + "\n";
     }
 
-    void alloc(const string &name)
+    void alloc(const string &name, const string &type_str = "i32")
     {
-        koopa_str += "  " + name + " = alloc i32\n";
+        koopa_str += "  " + name + " = alloc " + type_str + "\n";
     }
 
     void globalAllocINT(const string &name, const string &init = "zeroinit")
     {
         koopa_str += "global " + name + " = alloc i32, " + init + "\n";
+    }
+
+    void globalAllocArray(const string &name, const string &array_type, const string &init = "zeroinit")
+    {
+        koopa_str += "global " + name + " = alloc " + array_type + ", " + init + "\n";
     }
 
     void load(const string &to, const string &from)
@@ -98,6 +103,16 @@ public:
         koopa_str.append("decl @starttime()\n");
         koopa_str.append("decl @stoptime()\n");
         koopa_str.append("\n");
+    }
+
+    void getelemptr(const string &to, const string &from, const string &i)
+    {
+        koopa_str += "  " + to + " = getelemptr " + from + ", " + i + "\n";
+    }
+
+    void getptr(const string &to, const string &from, const string &i)
+    {
+        koopa_str += "  " + to + " = getptr " + from + ", " + i + "\n";
     }
 
     string getKoopaIR(){

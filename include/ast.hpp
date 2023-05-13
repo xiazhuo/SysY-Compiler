@@ -68,11 +68,23 @@ class FuncDefAST : public BaseAST {
     void Dump() const override;
 };
 
-class FuncFParamAST
+class FuncFParamAST: public BaseAST
 {
   public:
+    enum TAG
+    {
+      VARIABLE,
+      ARRAY
+    };
+    TAG tag;
     unique_ptr<BaseAST> btype;
     string ident;
+    // 需要注意参数为一维数组指针的特殊情况
+    // 如 int a[]，此时虽然const_exps为空，但变量仍属于ARRAY
+    vector<unique_ptr<ExpAST>> const_exps; 
+
+    void Dump() const override; 
+    void getIndex(vector<int> &len) const;
 };
 
 class BTypeAST : public BaseAST
@@ -166,22 +178,29 @@ class ConstDefAST : public DefAST
 {
   public:
     string ident;
-    unique_ptr<ExpAST> const_init_val;
+    vector<unique_ptr<ExpAST>> const_exps;  // 据此判断是否为数组
+    unique_ptr<ConstInitValAST> const_init_val; // 常量一定有初始值
     void Dump(bool is_global = false) const override;
+    void DumpArray(bool is_global = false) const;
 };
 
 class VarDefAST : public DefAST
 {
   public:
     string ident;
-    unique_ptr<ExpAST> init_val;
+    vector<unique_ptr<ExpAST>> const_exps; // 据此判断是否为数组
+    unique_ptr<InitValAST> init_val;  // 变量不一定有初始值，可能为空
     void Dump(bool is_global = false) const override;
+    void DumpArray(bool is_global = false) const;
 };
 
 class LValAST
 {
   public:
     string ident;
+    // 需要注意参数为一维数组指针的特殊情况
+    // 如传递给int a[] 的实参 a，此时虽然exps为空，但变量属于数组指针而非int
+    vector<unique_ptr<ExpAST>> exps;
     string Dump(bool dump_ptr = false) const; // 赋值时store到 @x，计算时load到 %n
     int getValue() const;
 };
@@ -300,16 +319,21 @@ class ConstExpAST : public ExpAST
 class ConstInitValAST : public ExpAST
 {
   public:
-    unique_ptr<ExpAST> const_exp;
+    unique_ptr<ExpAST> const_exp;   // 递归终点
+    vector<unique_ptr<ConstInitValAST>> inits;  // 递归定义
 
     string Dump() const override { return ""; }
     int getValue() const override;
+    void getInitVal(string *ptr, const vector<int> &len) const; // 得到初始化列表
 };
 
 class InitValAST : public ExpAST
 {
   public:
-    unique_ptr<ExpAST> exp;
+    unique_ptr<ExpAST> exp;   // 递归终点
+    vector<unique_ptr<InitValAST>> inits;   // 递归定义
+
     string Dump() const override;
     int getValue() const override;
+    void getInitVal(string *ptr, const vector<int> &len, bool is_global = false) const;
 };

@@ -89,19 +89,33 @@ public:
     enum TYPE
     {
         SYSY_INT,       // 变量
+        SYSY_ARRAY,
         SYSY_INT_CONST, // 常量
+        SYSY_ARRAY_CONST,
         SYSY_FUNC_VOID,
         SYSY_FUNC_INT
     };
 
     TYPE ty;
-    int value;
+    int value;          // 当为数组类型时，value表示该层数组的大小,如 a[2][3]，则第一层为 2，第二层为 3
+    SysYType *next;     // 将不同层的数组依次串起来
 
-    SysYType() : ty(SYSY_INT), value(0){}
-    SysYType(TYPE _t) : ty(_t), value(0){}
-    SysYType(TYPE _t, int _v) : ty(_t), value(_v){}
+    SysYType() : ty(SYSY_INT), value(-1),next(nullptr) {}
+    SysYType(TYPE _t) : ty(_t), value(-1), next(nullptr) {}
+    SysYType(TYPE _t, int _v) : ty(_t), value(_v), next(nullptr) {}
 
     ~SysYType() = default;
+    void getIndex(vector<int> &len)
+    {
+        len.clear();
+        SysYType *p = this;
+        while (p->next != nullptr && (p->ty == SYSY_ARRAY_CONST || p->ty == SYSY_ARRAY))
+        {
+            len.push_back(value);
+            p = p->next;
+        }
+        return;
+    }
 };
 
 // 符号
@@ -140,13 +154,27 @@ public:
 
     void insertINT(const string &ident, const string &name)
     {
-        SysYType *ty = new SysYType(SysYType::SYSY_INT);
+        SysYType *ty = new SysYType(SysYType::SYSY_INT, 0);
         Symbol *sym = new Symbol(name, ty);
         symbol_tb.insert({ident, sym});
     }
 
     void insertFUNC(const string &ident, const string &name, SysYType::TYPE _t){
         SysYType *ty = new SysYType(_t);
+        Symbol *sym = new Symbol(name, ty);
+        symbol_tb.insert({ident, sym});
+    }
+
+    void insertArray(const string &ident, const string &name, const vector<int> &len, SysYType::TYPE _t){
+        SysYType *ty = new SysYType(_t);
+        SysYType *p = ty;
+        for(int i:len){
+            p->ty = _t;
+            p->value = i;   // 该层维数（若第一维是-1，则表示这是一个数组指针）
+            p->next = new SysYType();
+            p = p->next;
+        }
+        p->ty = (_t == SysYType::SYSY_ARRAY_CONST) ? SysYType::SYSY_INT_CONST : SysYType::SYSY_INT;
         Symbol *sym = new Symbol(name, ty);
         symbol_tb.insert({ident, sym});
     }
@@ -204,6 +232,12 @@ public:
     {
         string name = "@" + ident;
         sym_tb_st.back()->insertFUNC(ident, name, _t);
+    }
+
+    void insertArray(const string &ident, const vector<int> &len, SysYType::TYPE _t)
+    {
+        string name = nm.getVarName(ident);
+        sym_tb_st.back()->insertArray(ident, name, len, _t);
     }
 
     // 从栈底开始往上依次查找
