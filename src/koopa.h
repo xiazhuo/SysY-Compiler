@@ -65,7 +65,7 @@ typedef const void *koopa_program_t;
 typedef void *koopa_raw_program_builder_t;
 
 ///
-/// Kind of raw slice item.
+/// Kind of raw slice item.(列表元素类型，可以是函数、指令、基本块)
 ///
 enum koopa_raw_slice_item_kind {
   /// Unknown.
@@ -86,7 +86,7 @@ enum koopa_raw_slice_item_kind {
 typedef uint32_t koopa_raw_slice_item_kind_t;
 
 ///
-/// A raw slice that can store any kind of items.
+/// A raw slice that can store any kind of items.（列表类，kind表明是哪种列表）
 ///
 typedef struct {
   /// Buffer of slice items.
@@ -138,6 +138,9 @@ typedef struct koopa_raw_type_kind {
 ///
 typedef const koopa_raw_type_kind_t *koopa_raw_type_t;
 
+
+// 下面开始定义数据结构
+
 ///
 /// A raw Koopa program.
 ///
@@ -173,9 +176,9 @@ typedef const koopa_raw_function_data_t *koopa_raw_function_t;
 typedef struct {
   /// Name of basic block, null if no name.
   const char *name;
-  /// Parameters.
+  /// Parameters. （基本块参数：phi函数的代替形式）
   koopa_raw_slice_t params;
-  /// Values that this basic block is used by.
+  /// Values that this basic block is used by.  （基本块中定义的值被哪些基本块使用）
   koopa_raw_slice_t used_by;
   /// Instructions in this basic block.
   koopa_raw_slice_t insts;
@@ -186,6 +189,7 @@ typedef struct {
 ///
 typedef const koopa_raw_basic_block_data_t *koopa_raw_basic_block_t;
 
+// 一切皆value
 struct koopa_raw_value_data;
 
 ///
@@ -343,9 +347,9 @@ typedef struct {
   koopa_raw_basic_block_t true_bb;
   /// Target if condition is `false`.
   koopa_raw_basic_block_t false_bb;
-  /// Arguments of `true` target..
+  /// Arguments of `true` target..  （基本块参数列表，SSA形式时才有）
   koopa_raw_slice_t true_args;
-  /// Arguments of `false` target..
+  /// Arguments of `false` target.. （基本块参数列表，SSA形式时才有）
   koopa_raw_slice_t false_args;
 } koopa_raw_branch_t;
 
@@ -418,7 +422,7 @@ typedef enum {
 } koopa_raw_value_tag_t;
 
 ///
-/// Kind of raw Koopa value.
+/// Kind of raw Koopa value.  （根据tag转成union中的一种指令类型）
 ///
 typedef struct {
   koopa_raw_value_tag_t tag;
@@ -445,7 +449,7 @@ struct koopa_raw_value_data {
   koopa_raw_type_t ty;
   /// Name of value, null if no name.
   const char *name;
-  /// Values that this value is used by.
+  /// Values that this value is used by.  （指令级定义的变量被谁使用）
   koopa_raw_slice_t used_by;
   /// Kind of value.
   koopa_raw_value_kind_t kind;

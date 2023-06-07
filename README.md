@@ -26,3 +26,6 @@ build/compiler -riscv hello.c -o hello.s
 
 
 若要分别查看 lab1 - lab8 的内容，请在右上角找到本项目的历史提交。
+
+研究了两三天，由于本人采用on the fly式的中间代码生成，没有自定义中间代码的数据结构，很难添加机器无关级的优化
+虽然官方libKoopa提供了koopa_parse_from_string的接口，但是却不允许在其上进行修改，现在处在一种很尴尬的境地。

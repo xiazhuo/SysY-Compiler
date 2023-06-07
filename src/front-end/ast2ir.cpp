@@ -1,6 +1,6 @@
-#include "../include/ast.hpp"
-#include "../include/symbol.hpp"
-#include "../include/util.hpp"
+#include "include/ast.hpp"
+#include "include/symbol.hpp"
+#include "../util.hpp"
 #include <iostream>
 
 using namespace std;

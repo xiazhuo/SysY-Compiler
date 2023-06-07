@@ -1,7 +1,7 @@
 %code requires {
   #include <memory>
   #include <string>
-  #include "../include/ast.hpp"
+  #include "include/ast.hpp"
 }
 
 %{
@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 #include <cstring>
-#include "../include/ast.hpp"
+#include "include/ast.hpp"
 
 using namespace std;
 
